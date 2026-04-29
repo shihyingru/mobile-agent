@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Used only by the system splash screen — Compose handles all other colors -->
+    <color name="background">#0A0A0F</color>
+</resources>
