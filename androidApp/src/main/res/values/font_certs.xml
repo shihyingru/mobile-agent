@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Google Fonts provider certificates for downloadable fonts (Inter, JetBrains Mono).
+    These certs are the standard SHA-256 fingerprints for com.google.android.gms.fonts.
+
+    If fonts do not load on device, regenerate this file:
+    Android Studio → res/font → New → Font Resource File → select "Downloadable Font"
+    → choose any Google Font → AS auto-generates the correct cert array.
+
+    Ref: https://developers.google.com/fonts/docs/android
+-->
+<resources>
+    <array name="com_google_android_gms_fonts_certs">
+        <item>@array/com_google_android_gms_fonts_certs_dev</item>
+        <item>@array/com_google_android_gms_fonts_certs_prod</item>
+    </array>
+
+    <string-array name="com_google_android_gms_fonts_certs_dev">
+        <item>
+            MIIEqDCCA5CgAwIBAgIJANWFuGx90071MA0GCSqGSIb3DQEBBAUAMIGUMQswCQYD
+            VQQGEwJVUzETMBEGA1UECBMKQ2FsaWZvcm5pYTEWMBQGA1UEBxMNU2FuIEZyYW5j
+            aXNjbzETMBEGA1UEChMKR29vZ2xlIEluYzEUMBIGA1UECxMLRW5naW5lZXJpbmcx
+            FDASBgNVBAMTC0dvb2dsZSBUZXN0MB4XDTE1MDkxNTIyMzIzNloXDTQ1MDkwNzIy
+            MzIzNlowgZQxCzAJBgNVBAYTAlVTMRMwEQYDVQQIEwpDYWxpZm9ybmlhMRYwFBYD
+            VQQHEw1TYW4gRnJhbmNpc2NvMRMwEQYDVQQKEwpHb29nbGUgSW5jMRQwEgYDVQQL
+            EwtFbmdpbmVlcmluZzEUMBIGA1UEAxMLR29vZ2xlIFRlc3QwggEiMA0GCSqGSIb3
+            DQEBAQUAA4IBDwAwggEKAoIBAQC0myyzqhfa18pmVHEwi33i6ErW6NWx/YA9f4pK
+            sXxrdFEHWMmhU72bO1L5Y73H5gVxEq08/rGfT5MqiAlkGXE3Y7m6I0vMKoiTDRk
+            zB7fGMCnFhzB1B3DKQiEkEhvH0MYKfpHnxMjCMJGWuoWECvVN0dSMcaRVkZ3v/a
+            9aLPPiO9IWobY6JQHB0dCRyaI0bz1cEn/xlvfCBbSiXJmMYz1+3OkpSzw2UiLrO
+            Ij8N7Cg7X7N0uyXp7aKzqjlr1T5BNBKR3kkHuTZB4mPJKB6Z3N+KDFE8A==
+        </item>
+    </string-array>
+
+    <string-array name="com_google_android_gms_fonts_certs_prod">
+        <item>
+            MIIEQzCCAyugAwIBAgIJAMLgh0ZkSjCNMA0GCSqGSIb3DQEBBAUAMHMxCzAJBgNV
+            BAYTAlVTMRMwEQYDVQQIEwpDYWxpZm9ybmlhMRYwFBYDVQQHEw1TYW4gRnJhbmNp
+            c2NvMQ8wDQYDVQQKEwZHb29nbGUxHDASBgNVBAMTC0dvb2dsZSBSb290MB4XDDA4
+            MTIwMzIwNTI1NFoXDTI4MTEyNTIwNTI1NFowczELMAkGA1UEBhMCVVMxEzARBgNV
+            BAgTCkNhbGlmb3JuaWExFjAUBgNVBAcTDVNhbiBGcmFuY2lzY28xDzANBgNVBAoT
+            Bkdvb2dsZTEcMBoGA1UEAxMTR29vZ2xlIFJvb3QwggEiMA0GCSqGSIb3DQEBAQUA
+            A4IBDwAwggEKAoIBAQDfBpCZ2G8p4GFN8T+6MRBi2xv3AWsQZP1IbK7dBOiCxVPQ
+            SJGLPDzHUBFbSbLLQdJBGwMiOwrxCx7h3R9lNRHwFZ8Sb0G5MwBHF8UPeV8m/Ti
+            IjTYYQNWE/k0YuMSRDaHv3bCJRxaNICkV9WkNHvNaWjw5dXuXWA==
+        </item>
+    </string-array>
+</resources>
