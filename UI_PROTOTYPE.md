@@ -239,13 +239,14 @@ The home screen is **one scrollable screen**. Top to bottom:
 ## Component Specs
 
 ### 1. Header
-- 24dp horizontal padding, 32dp top padding
+- 24dp horizontal padding, 32dp top padding **plus the system status bar inset** (the activity is edge-to-edge)
+- A vertical gradient scrim sits over the status bar zone — `Background` opaque at the very top, fading to fully transparent ~16dp below the system bar — so content scrolls *under* the status icons cleanly instead of being clipped
 - Greeting uses `Display` style; date uses `Body` color `Text Secondary`
 - Settings icon (`Icons.Rounded.Settings`) tappable, 48dp hit target
 
 ### 2. Agent Status Card
 - Background `Surface`, rounded 16dp, padding 20dp
-- Status dot: 8dp circle, `Accent` color, soft glow effect (drop shadow with `Accent Glow`)
+- Breathing status dot: 6dp solid `Accent` core inside a 16dp halo `Box`. The halo is drawn behind the core via `drawBehind` and pulses both **radius** (30% → 50% of the box) and **alpha** (0.15 → 0.60) from a single `breath` value (1500ms `tween`, `RepeatMode.Reverse` — ≈3s round trip). Result: a calm inhale/exhale, not a flat glow.
 - "Active" label in `Title` style
 - "Next run" in `Body` `Text Secondary`, monospace timestamp
 - "Run Now" button: filled, `Accent` background, `Surface` text, rounded 12dp, height 44dp
@@ -279,7 +280,7 @@ The home screen is **one scrollable screen**. Top to bottom:
 ## Empty / Loading / Error States
 
 **Empty (no tasks today):**
-- Status card shows "Nothing high-priority today"
+- Status card shows "Nothing high-priority today ✨"
 - Briefing card hidden
 - Show single illustration card with text: "Enjoy your day, Luna."
 
@@ -291,13 +292,13 @@ The home screen is **one scrollable screen**. Top to bottom:
 **Error (Notion auth expired / Gemini failed):**
 - Inline banner above status card, `Error` background at 10% opacity
 - Text: "Couldn't reach Notion. Check your token in Settings."
-- Action: "Open Settings"
+- Action: "Open Settings ↗"
 
 ---
 
 ## Microinteractions
 
-- Status dot: subtle 2-second pulse animation when active
+- Status dot: 1500ms breath cycle in `RepeatMode.Reverse` (~3s round trip), animating both halo radius and alpha
 - Task card press: scale 0.98, 100ms
 - Run Now button: ripple in `Accent` color
 - Card entry: stagger fade-in (50ms delay per card) on first load
