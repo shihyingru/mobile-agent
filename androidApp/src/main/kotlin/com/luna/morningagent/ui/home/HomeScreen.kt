@@ -7,11 +7,15 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -29,6 +33,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -72,11 +77,23 @@ private fun HomeScreenContent(
     val morning = MaterialTheme.morning
     val isLoading = uiState is HomeUiState.Loading
 
-    LazyColumn(
-        modifier            = modifier
+    val statusBars = WindowInsets.statusBars.asPaddingValues()
+    val navBars = WindowInsets.navigationBars.asPaddingValues()
+    val statusBarHeight = statusBars.calculateTopPadding()
+
+    Box(
+        modifier = modifier
             .fillMaxSize()
             .background(ColorBackground),
-        contentPadding      = PaddingValues(horizontal = 24.dp, vertical = 32.dp),
+    ) {
+        LazyColumn(
+        modifier            = Modifier.fillMaxSize(),
+        contentPadding      = PaddingValues(
+            start  = 24.dp,
+            end    = 24.dp,
+            top    = 32.dp + statusBarHeight,
+            bottom = 32.dp + navBars.calculateBottomPadding(),
+        ),
         verticalArrangement = Arrangement.spacedBy(0.dp),
     ) {
         // Header
@@ -176,6 +193,24 @@ private fun HomeScreenContent(
                 textAlign = TextAlign.Center,
             )
         }
+    }
+
+        // Gradient protection: keeps system bar icons legible while content scrolls under.
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(statusBarHeight + 16.dp)
+                .align(Alignment.TopCenter)
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            ColorBackground,
+                            ColorBackground.copy(alpha = 0.85f),
+                            ColorBackground.copy(alpha = 0f),
+                        ),
+                    ),
+                ),
+        )
     }
 }
 

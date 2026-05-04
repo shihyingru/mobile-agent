@@ -47,14 +47,14 @@ fun AgentStatusCard(
     val morning = MaterialTheme.morning
 
     val infiniteTransition = rememberInfiniteTransition(label = "statusDot")
-    val dotGlowAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.2f,
-        targetValue  = 0.6f,
+    val breath by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue  = 1f,
         animationSpec = infiniteRepeatable(
-            animation  = tween(1000),
+            animation  = tween(1500),
             repeatMode = RepeatMode.Reverse,
         ),
-        label = "dotGlow",
+        label = "breath",
     )
 
     Column(
@@ -73,21 +73,23 @@ fun AgentStatusCard(
         Spacer(modifier = Modifier.height(12.dp))
 
         Row(verticalAlignment = Alignment.CenterVertically) {
-            // Pulsing accent dot (AccentPulse pattern)
+            // Breathing accent dot — radius and alpha both pulse for a soft inhale/exhale
             Box(
                 modifier = Modifier
-                    .size(20.dp)
+                    .size(16.dp)
                     .drawBehind {
+                        val minR = size.minDimension * 0.30f
+                        val maxR = size.minDimension * 0.50f
                         drawCircle(
-                            color  = morning.accent.copy(alpha = dotGlowAlpha),
-                            radius = size.minDimension * 0.9f,
+                            color  = morning.accent.copy(alpha = 0.15f + breath * 0.45f),
+                            radius = minR + (maxR - minR) * breath,
                         )
                     },
                 contentAlignment = Alignment.Center,
             ) {
                 Box(
                     modifier = Modifier
-                        .size(8.dp)
+                        .size(6.dp)
                         .clip(CircleShape)
                         .background(morning.accent),
                 )
