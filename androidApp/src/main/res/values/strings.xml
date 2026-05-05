@@ -21,4 +21,11 @@
     <string name="settings_title">Settings</string>
     <string name="cd_settings">Settings</string>
     <string name="cd_notion_link">Open in Notion</string>
+    <string name="settings_section_keys">API KEYS</string>
+    <string name="settings_field_gemini">Gemini API key</string>
+    <string name="settings_field_notion">Notion integration token</string>
+    <string name="settings_button_save">Save</string>
+    <string name="settings_feedback_saved">Saved</string>
+    <string name="settings_placeholder_replace">Tap to replace</string>
+    <string name="cd_back">Back</string>
 </resources>
