@@ -306,13 +306,23 @@ The home screen is **one scrollable screen**. Top to bottom:
 
 ---
 
-## Settings Screen (out of scope for prototype)
+## Settings Screen
 
-Reachable from header gear icon. Not implemented in this prototype, but stub composable should exist. Will hold:
-- Gemini API key input (masked)
-- Notion connection status + reconnect button
-- Schedule time picker (default 9:00 AM)
-- Test run button
+Reachable from the header gear icon. As of Phase 2 step 1 the screen is real:
+
+**Shipped**
+- `Scaffold` + `TopAppBar` with back arrow on `Background`. Title in `Title` style.
+- `API KEYS` section label (`Label` style, `Text Muted`).
+- Two `OutlinedTextField`s with `PasswordVisualTransformation` (dot-mask) — Gemini API key and Notion integration token. Border switches to `Accent` on focus, `Border` token otherwise. Container is `Surface`.
+- After saving, the field placeholder reads `•••• <last4> — Tap to replace`. The plaintext is never re-rendered into the UI on subsequent visits — only the last-4 preview is exposed.
+- `Save` button: `Accent` filled, rounded 12dp, height 44dp. Disabled until at least one draft is non-empty.
+- `AnimatedVisibility` "Saved" feedback in `Success` green for ~2s after each successful save.
+- IME wiring: Gemini field → `ImeAction.Next` (focus moves to Notion). Notion field → `ImeAction.Send`, fires Save only when both drafts are non-empty (`canSubmit` guard); on success, hides keyboard and clears focus.
+
+**Still out of scope (later Phase 2 steps)**
+- Notion connection status + reconnect button (step 2)
+- Schedule time picker, default 9:00 AM (step 4)
+- Test run button (step 3)
 
 ---
 
@@ -328,12 +338,15 @@ Reachable from header gear icon. Not implemented in this prototype, but stub com
 
 ---
 
-## What Claude Code Should NOT Do (for this prototype)
+## What Claude Code Should NOT Do Outside Its Phase 2 Slice
 
-- Do **not** wire up actual Gemini API calls
-- Do **not** wire up actual Notion MCP calls
-- Do **not** implement WorkManager scheduling yet
-- The prototype is **UI-only**, fed by mock data from `PreviewData.kt`
-- Keep all logic stubs as `TODO()` with clear comments
+Phase 2 ships one slice per branch (`feature/<core-detail>`). When working on a given slice, do not silently bring forward later steps:
 
-The point of this prototype is to validate the look and feel before wiring real systems. Real integration follows in a later phase.
+- ⏳ Step 2 — Notion MCP over SSE: don't wire it until that branch.
+- ⏳ Step 3 — Koog agent + Gemini calls: keep `AgentRepository` as `TODO()` until that branch; `HomeScreen` continues to read `PreviewData` for mock data in the meantime.
+- ⏳ Step 4 — WorkManager schedule + briefing notification: keep `MorningAgentWorker` as `TODO()` until that branch.
+
+Already shipped (don't re-stub):
+- ✅ Step 1 — `TokenStore` (EncryptedSharedPreferences) + Settings UI.
+
+The point of slicing is to keep each PR small enough to actually review on a real device.

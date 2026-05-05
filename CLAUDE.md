@@ -16,19 +16,15 @@ This is a **personal tool**, not a product. Optimize for clarity and craft, not 
 
 ## Stage of Development
 
-**Phase 1 (CURRENT) — UI Prototype**
-- Single screen, Jetpack Compose, mock data only
-- No real API calls
-- No scheduling
-- Goal: lock the visual direction before wiring real systems
+**Phase 1 — UI Prototype.** ✅ Shipped. Launch + Home screens, mock data, edge-to-edge with status-bar gradient scrim, breathing accent dot.
 
-**Phase 2 (FUTURE — do not implement yet)**
-- Wire Koog agent + Gemini API
-- Wire Notion MCP over SSE
-- Wire WorkManager scheduling
-- Wire EncryptedSharedPreferences for token storage
+**Phase 2 — Real wiring.** In progress, one slice per branch:
+- ✅ **Step 1: secure token storage + Settings UI** (`feature/secure-token-storage`) — `EncryptedSharedPreferences` behind `TokenStore`, real `SettingsScreen` with masked fields and IME Next/Send wiring.
+- ⏳ Step 2: Notion MCP client over SSE (Koog MCP).
+- ⏳ Step 3: Koog agent + Gemini wiring → real `AgentRepository.runAgent()`.
+- ⏳ Step 4: WorkManager 9:00 AM schedule + briefing notification.
 
-When working in Phase 1, leave Phase 2 wiring as `TODO()` stubs with clear comments. Do not silently mock real network calls.
+When extending Phase 2, ship one slice per branch named `feature/<core-detail>`. Do not silently mock real network calls — keep unimplemented pieces as `TODO(Phase 2 stepN: …)` until their slice arrives.
 
 ---
 
@@ -41,13 +37,14 @@ When working in Phase 1, leave Phase 2 wiring as `TODO()` stubs with clear comme
 | UI | Jetpack Compose (Material 3) | Single-activity app |
 | Min SDK | 26 (Android 8.0) | EncryptedSharedPreferences requires 23+; we go higher for safety |
 | Target SDK | 35 |  |
-| Kotlin | 2.0+ |  |
-| Agent framework | Koog (`ai.koog:koog-agents-jvm:0.7.3+`) | Phase 2 only |
-| LLM provider | Google Gemini | via Koog's Google client (Phase 2) |
-| Tool integration | Notion MCP (SSE transport) | via Koog MCP client (Phase 2) |
-| Background work | WorkManager (`androidx.work`) | Phase 2 only |
-| Secure storage | Android Keystore + `EncryptedSharedPreferences` (`androidx.security:security-crypto`) | Phase 2 only |
-| Notifications | `NotificationCompat` | Phase 2 only |
+| Kotlin | 2.3+ | Required by Koog 0.8 metadata. `kotlin { compilerOptions { jvmTarget.set(JvmTarget.JVM_17) } }` (the old AGP `kotlinOptions {}` was removed in Kotlin 2.3). |
+| Compose BOM | 2026.04.01 | Compose Compiler 2.3 compatible |
+| Agent framework | Koog (`ai.koog:koog-agents:0.8.0`) | Single artifact — Gemini client + MCP client. Phase 2. |
+| LLM provider | Google Gemini | via Koog's Google client (Phase 2 step 3) |
+| Tool integration | Notion MCP (SSE transport) | via Koog MCP client (Phase 2 step 2) |
+| Background work | WorkManager (`androidx.work:work-runtime-ktx:2.10.0`) | Phase 2 step 4 |
+| Secure storage | Android Keystore + `EncryptedSharedPreferences` (`androidx.security:security-crypto:1.1.0-alpha06`) | ✅ Phase 2 step 1 — `TokenStore`. ESP is officially deprecated in `1.1.0-alpha07+`; we'll migrate to DataStore + Tink only when something forces it. |
+| Notifications | `NotificationCompat` | Phase 2 step 4 |
 
 ---
 
@@ -83,6 +80,7 @@ morning-agent/
 │       │   │   │       └── LoadingDots.kt
 │       │   │   ├── home/
 │       │   │   │   ├── HomeScreen.kt            (the main screen)
+│       │   │   │   ├── HomeViewModel.kt
 │       │   │   │   └── components/
 │       │   │   │       ├── AgentStatusCard.kt
 │       │   │   │       ├── BriefingCard.kt
@@ -90,13 +88,16 @@ morning-agent/
 │       │   │   │       ├── SectionLabel.kt
 │       │   │   │       └── PriorityPill.kt
 │       │   │   └── settings/
-│       │   │       └── SettingsScreen.kt        (stub — empty composable)
+│       │   │       ├── SettingsScreen.kt        (masked Gemini/Notion fields, IME Next→Send)
+│       │   │       └── SettingsViewModel.kt     (AndroidViewModel owning TokenStore)
 │       │   └── data/
 │       │       ├── model/
 │       │       │   ├── Task.kt              (data class)
 │       │       │   ├── Priority.kt          (enum)
 │       │       │   └── Briefing.kt          (data class)
-│       │       └── PreviewData.kt           (mock data for prototype)
+│       │       ├── secure/
+│       │       │   └── TokenStore.kt         (EncryptedSharedPreferences — Phase 2 step 1)
+│       │       └── PreviewData.kt           (mock data; Clock from kotlin.time)
 │       └── res/
 │           ├── values/
 │           │   ├── strings.xml
@@ -194,77 +195,65 @@ object PreviewData {
 
 ---
 
-## Phase 2 Stubs (Add Now, Implement Later)
+## Phase 2 — Shipped vs. Stubs
 
-Create empty/stub files now so the structure is in place, but implement them in Phase 2:
+### ✅ Shipped — `data/secure/TokenStore.kt`
+Real implementation backed by `EncryptedSharedPreferences` (`MasterKey` AES256_GCM, AES256_SIV/AES256_GCM for keys/values). Same `TokenStore(context)` constructor surface; uses `applicationContext` internally. Methods: `saveGeminiKey`, `getGeminiKey`, `saveNotionToken`, `getNotionToken`.
 
-### `data/AgentRepository.kt` (stub)
+### ⏳ Still stubs — leave as `TODO(Phase 2 stepN: …)` until their slice arrives
+
 ```kotlin
+// data/AgentRepository.kt — Phase 2 step 3
 class AgentRepository {
-    suspend fun runAgent(): Briefing {
-        TODO("Phase 2: call Koog agent → Gemini + Notion MCP")
-    }
-
-    suspend fun getLastBriefing(): Briefing? {
-        TODO("Phase 2: read from local cache")
-    }
+    suspend fun runAgent(): Briefing { TODO("Phase 2 step 3: call Koog agent → Gemini + Notion MCP") }
+    suspend fun getLastBriefing(): Briefing? { TODO("Phase 2 step 3: read from local cache") }
 }
-```
 
-### `data/secure/TokenStore.kt` (stub)
-```kotlin
-class TokenStore(context: Context) {
-    fun saveGeminiKey(key: String) { TODO("Phase 2: EncryptedSharedPreferences") }
-    fun getGeminiKey(): String? { TODO("Phase 2: EncryptedSharedPreferences") }
-
-    fun saveNotionToken(token: String) { TODO("Phase 2: EncryptedSharedPreferences") }
-    fun getNotionToken(): String? { TODO("Phase 2: EncryptedSharedPreferences") }
-}
-```
-
-### `worker/MorningAgentWorker.kt` (stub)
-```kotlin
+// worker/MorningAgentWorker.kt — Phase 2 step 4
 class MorningAgentWorker(...) : CoroutineWorker(...) {
     override suspend fun doWork(): Result {
-        TODO("Phase 2: invoke AgentRepository.runAgent() and post notification")
+        TODO("Phase 2 step 4: invoke AgentRepository.runAgent() and post notification")
     }
 }
 ```
-
-These stubs make the architecture visible without committing to the implementation yet.
 
 ---
 
 ## Gradle Dependencies (androidApp/build.gradle.kts)
 
+Versions are pinned in `gradle/libs.versions.toml` and referenced via the typesafe `libs.*` accessors. Active set:
+
 ```kotlin
 dependencies {
-    // Compose BOM
-    implementation(platform("androidx.compose:compose-bom:2024.10.00"))
-    implementation("androidx.compose.ui:ui")
-    implementation("androidx.compose.material3:material3")
-    implementation("androidx.compose.ui:ui-tooling-preview")
-    debugImplementation("androidx.compose.ui:ui-tooling")
+    // Compose BOM (2026.04.01 — Compose Compiler 2.3 compatible)
+    implementation(platform(libs.androidx.compose.bom))
+    implementation(libs.androidx.compose.ui)
+    implementation(libs.androidx.compose.material3)
+    implementation(libs.androidx.compose.ui.tooling.preview)
+    debugImplementation(libs.androidx.compose.ui.tooling)
 
-    // Activity + Lifecycle
-    implementation("androidx.activity:activity-compose:1.9.3")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
+    // Google Fonts + Material Icons
+    implementation(libs.androidx.compose.google.fonts)
+    implementation(libs.androidx.compose.material.icons)
 
-    // Splash Screen API (system-level splash hand-off)
-    implementation("androidx.core:core-splashscreen:1.0.1")
+    // Activity + Lifecycle + Splash + datetime
+    implementation(libs.androidx.activity.compose)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.core.splashscreen)
+    implementation(libs.kotlinx.datetime)
 
-    // kotlinx.datetime (used in data models)
-    implementation("org.jetbrains.kotlinx:kotlinx-datetime:0.6.1")
-
-    // Phase 2 — DECLARED BUT UNUSED IN PHASE 1
-    // implementation("ai.koog:koog-agents-jvm:0.7.3")
-    // implementation("ai.koog:koog-agents-mcp:0.7.3")
-    // implementation("androidx.security:security-crypto:1.1.0-alpha06")
-    // implementation("androidx.work:work-runtime-ktx:2.10.0")
+    // Phase 2 — agent + secure storage + scheduling
+    implementation(libs.koog.agents)              // single artifact: Gemini client + MCP client
+    implementation(libs.androidx.security.crypto) // EncryptedSharedPreferences
+    implementation(libs.androidx.work.runtime.ktx)
 }
 ```
 
-Comment out Phase 2 dependencies during Phase 1 — they bloat the build for no reason yet.
+Two non-obvious bits in `androidApp/build.gradle.kts`:
+
+1. **Top-level Kotlin DSL** — Kotlin 2.3 removed the AGP-side `android { kotlinOptions {} }` block, so `jvmTarget` lives in a top-level `kotlin { compilerOptions { jvmTarget.set(JvmTarget.JVM_17) } }`. Keep that pattern when touching this file.
+
+2. **`packaging.resources.excludes`** — Koog's transitive deps (Ktor, Netty, OkHttp, AWS SDK) ship overlapping META-INF metadata. The current exclude set covers `INDEX.LIST`, `io.netty.versions.properties`, OSGI `MANIFEST.MF`, license/notice files. If a future dep adds new conflicts, extend that block rather than dropping deps.
 
 ---
 
