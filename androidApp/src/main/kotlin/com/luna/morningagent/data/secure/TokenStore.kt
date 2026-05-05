@@ -1,12 +1,35 @@
 package com.luna.morningagent.data.secure
 
 import android.content.Context
+import android.content.SharedPreferences
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
 
-// TODO(Phase 2): replace with EncryptedSharedPreferences (androidx.security:security-crypto)
 class TokenStore(context: Context) {
-    fun saveGeminiKey(key: String) { TODO("Phase 2: EncryptedSharedPreferences") }
-    fun getGeminiKey(): String?    { TODO("Phase 2: EncryptedSharedPreferences") }
 
-    fun saveNotionToken(token: String) { TODO("Phase 2: EncryptedSharedPreferences") }
-    fun getNotionToken(): String?      { TODO("Phase 2: EncryptedSharedPreferences") }
+    private val prefs: SharedPreferences = run {
+        val appContext = context.applicationContext
+        val masterKey = MasterKey.Builder(appContext)
+            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+            .build()
+        EncryptedSharedPreferences.create(
+            appContext,
+            FILE_NAME,
+            masterKey,
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
+        )
+    }
+
+    fun saveGeminiKey(key: String) = prefs.edit().putString(KEY_GEMINI, key).apply()
+    fun getGeminiKey(): String? = prefs.getString(KEY_GEMINI, null)
+
+    fun saveNotionToken(token: String) = prefs.edit().putString(KEY_NOTION, token).apply()
+    fun getNotionToken(): String? = prefs.getString(KEY_NOTION, null)
+
+    companion object {
+        private const val FILE_NAME = "morning_agent_secrets"
+        private const val KEY_GEMINI = "gemini_api_key"
+        private const val KEY_NOTION = "notion_token"
+    }
 }

@@ -3,8 +3,10 @@ package com.luna.morningagent.data
 import com.luna.morningagent.data.model.Briefing
 import com.luna.morningagent.data.model.Priority
 import com.luna.morningagent.data.model.Task
-import kotlinx.datetime.Clock
+import kotlin.time.Clock
+import kotlin.time.ExperimentalTime
 
+@OptIn(ExperimentalTime::class)
 object PreviewData {
     val sampleBriefing = Briefing(
         generatedAt = Clock.System.now(),

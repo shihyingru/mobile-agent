@@ -1,3 +1,5 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -27,12 +29,30 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
-    }
-
     buildFeatures {
         compose = true
+    }
+
+    // Phase 2 deps (Koog → Ktor, Netty, OkHttp, AWS SDK) ship overlapping JVM-only metadata
+    // that Android's runtime ignores. Drop them so packaging merges cleanly.
+    packaging {
+        resources {
+            excludes += setOf(
+                "/META-INF/INDEX.LIST",
+                "/META-INF/io.netty.versions.properties",
+                "/META-INF/versions/9/OSGI-INF/MANIFEST.MF",
+                "/META-INF/{AL2.0,LGPL2.1}",
+                "/META-INF/DEPENDENCIES",
+                "/META-INF/LICENSE*",
+                "/META-INF/NOTICE*",
+            )
+        }
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_17)
     }
 }
 
@@ -60,9 +80,8 @@ dependencies {
     // kotlinx.datetime (Instant in data models)
     implementation(libs.kotlinx.datetime)
 
-    // Phase 2 — DECLARED BUT UNUSED IN PHASE 1
-    // implementation("ai.koog:koog-agents-jvm:0.7.3")
-    // implementation("ai.koog:koog-agents-mcp:0.7.3")
-    // implementation("androidx.security:security-crypto:1.1.0-alpha06")
-    // implementation("androidx.work:work-runtime-ktx:2.10.0")
+    // Phase 2 — agent + secure storage + scheduling
+    implementation(libs.koog.agents)              // Koog single artifact (Gemini client + MCP client)
+    implementation(libs.androidx.security.crypto) // EncryptedSharedPreferences for token storage
+    implementation(libs.androidx.work.runtime.ktx)
 }
