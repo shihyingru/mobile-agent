@@ -308,21 +308,32 @@ The home screen is **one scrollable screen**. Top to bottom:
 
 ## Settings Screen
 
-Reachable from the header gear icon. As of Phase 2 step 1 the screen is real:
+Reachable from the header gear icon. Phase 2 steps 1–2 shipped:
 
-**Shipped**
+**Layout**
 - `Scaffold` + `TopAppBar` with back arrow on `Background`. Title in `Title` style.
-- `API KEYS` section label (`Label` style, `Text Muted`).
-- Two `OutlinedTextField`s with `PasswordVisualTransformation` (dot-mask) — Gemini API key and Notion integration token. Border switches to `Accent` on focus, `Border` token otherwise. Container is `Surface`.
-- After saving, the field placeholder reads `•••• <last4> — Tap to replace`. The plaintext is never re-rendered into the UI on subsequent visits — only the last-4 preview is exposed.
-- `Save` button: `Accent` filled, rounded 12dp, height 44dp. Disabled until at least one draft is non-empty.
+- Intro paragraph (`Body`, `Text Secondary`): "Bring your own keys. They're stored encrypted on this device — they never leave your phone."
+- `CREDENTIALS` section label (`Label`, `Text Muted`) followed by two `OutlinedTextField`s with `PasswordVisualTransformation` — Gemini API key and Notion integration token. Border switches to `Accent` on focus, `Border` token otherwise. Container is `Surface`.
+- `DATA SOURCE` section label, then a plain (non-masked) field for Notion database URL or ID. Pasted Notion URLs are stripped to a 32-hex ID by `extractNotionDatabaseId`.
+- `Save` button: `Accent` filled, rounded 12dp, height 44dp. Enabled when any secret draft is non-empty **or** the database draft differs from what's saved.
 - `AnimatedVisibility` "Saved" feedback in `Success` green for ~2s after each successful save.
-- IME wiring: Gemini field → `ImeAction.Next` (focus moves to Notion). Notion field → `ImeAction.Send`, fires Save only when both drafts are non-empty (`canSubmit` guard); on success, hides keyboard and clears focus.
+- `Test Notion connection` text button below Save. Disabled until both a Notion token and a database ID are persisted. On tap it runs one `fetchHighPriorityTasks()` call and renders the result inline:
+  - In progress: "Connecting…" in `Text Secondary`
+  - Success: "Found N high-priority task(s)" in `Success`
+  - Failure: "Failed: <message>" in `Error`
+
+**Saved-state mask**
+After saving, each secret field renders `****<last4>` as its visible value when unfocused with no draft — saved state is legible at a glance. Focus drops the mask back to an empty editable state and re-enables `PasswordVisualTransformation`; blur with an empty draft restores the indicator. Plaintext is never re-rendered, and only the last-4 preview is exposed. The database field shows the saved 32-hex ID directly (it's not a secret).
+
+**IME wiring**
+Gemini → `ImeAction.Next` (focus moves to Notion). Notion → `ImeAction.Next` (focus moves to Database). Database → `ImeAction.Send`; fires Save when enabled, hides the keyboard, clears focus.
+
+**Drafts cleared on leave**
+The Settings ViewModel is activity-scoped — `MorningAgentApp` switches screens via `AnimatedContent`, not a `NavHost`, so the VM persists across visits. To stop half-typed values from leaking back on re-entry, both the top-bar arrow and `BackHandler` call `clearDrafts()` before propagating `onBack` (resets secret drafts to empty, database draft back to the saved ID, and clears the test result).
 
 **Still out of scope (later Phase 2 steps)**
-- Notion connection status + reconnect button (step 2)
+- "Run agent now" button to trigger the full Koog loop end-to-end (step 3)
 - Schedule time picker, default 9:00 AM (step 4)
-- Test run button (step 3)
 
 ---
 
@@ -342,11 +353,11 @@ Reachable from the header gear icon. As of Phase 2 step 1 the screen is real:
 
 Phase 2 ships one slice per branch (`feature/<core-detail>`). When working on a given slice, do not silently bring forward later steps:
 
-- ⏳ Step 2 — Notion MCP over SSE: don't wire it until that branch.
 - ⏳ Step 3 — Koog agent + Gemini calls: keep `AgentRepository` as `TODO()` until that branch; `HomeScreen` continues to read `PreviewData` for mock data in the meantime.
 - ⏳ Step 4 — WorkManager schedule + briefing notification: keep `MorningAgentWorker` as `TODO()` until that branch.
 
 Already shipped (don't re-stub):
 - ✅ Step 1 — `TokenStore` (EncryptedSharedPreferences) + Settings UI.
+- ✅ Step 2 — `NotionRestClient` + `NotionTaskSource` interface; Settings DB field, intro text, Test connection affordance, inline `****<last4>` saved-state mask, drafts cleared on back.
 
 The point of slicing is to keep each PR small enough to actually review on a real device.
