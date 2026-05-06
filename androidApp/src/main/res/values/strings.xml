@@ -29,8 +29,6 @@
     <string name="settings_field_database">Notion database (URL or ID)</string>
     <string name="settings_button_save">Save</string>
     <string name="settings_feedback_saved">Saved</string>
-    <string name="settings_saved_hint">Saved · ends in %1$s</string>
-    <string name="settings_saved_hint_db">Saved · type to replace</string>
     <string name="settings_button_test">Test Notion connection</string>
     <string name="settings_test_in_progress">Connecting…</string>
     <string name="settings_test_success">Found %1$d high-priority task(s)</string>

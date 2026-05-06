@@ -32,14 +32,20 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -168,7 +174,6 @@ private fun SettingsScreenContent(
             PlainField(
                 label       = stringResource(R.string.settings_field_database),
                 value       = uiState.databaseDraft,
-                isSaved     = uiState.savedDatabaseId.isNotEmpty(),
                 onChange    = onDatabaseDraftChange,
                 imeAction   = ImeAction.Send,
                 keyboardActions = KeyboardActions(
@@ -263,22 +268,20 @@ private fun SecretField(
     keyboardActions: KeyboardActions = KeyboardActions.Default,
 ) {
     val morning = MaterialTheme.morning
-    val savedHint: (@Composable () -> Unit)? = if (!savedLast4.isNullOrEmpty()) {
-        {
-            Text(
-                text  = stringResource(R.string.settings_saved_hint, savedLast4),
-                color = morning.textSecondary,
-            )
-        }
-    } else null
+    var focused by remember { mutableStateOf(false) }
+    // When the user has a stored value but hasn't typed anything yet, paint
+    // a literal "****abcd" inside the field so the saved state is visible at
+    // a glance. Drop it the moment the field gains focus so typing isn't
+    // appended to the mask.
+    val showSavedMask = draft.isEmpty() && !focused && !savedLast4.isNullOrEmpty()
+    val display = if (showSavedMask) "****$savedLast4" else draft
 
     OutlinedTextField(
-        value         = draft,
+        value         = display,
         onValueChange = onChange,
         label         = { Text(label, style = MorningType.Body) },
-        supportingText = savedHint,
         singleLine    = true,
-        visualTransformation = PasswordVisualTransformation(),
+        visualTransformation = if (showSavedMask) VisualTransformation.None else PasswordVisualTransformation(),
         keyboardOptions = KeyboardOptions(
             capitalization     = KeyboardCapitalization.None,
             autoCorrectEnabled = false,
@@ -296,7 +299,9 @@ private fun SecretField(
             focusedContainerColor   = morning.surface,
             unfocusedContainerColor = morning.surface,
         ),
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .onFocusChanged { focused = it.isFocused },
     )
 }
 
@@ -304,26 +309,15 @@ private fun SecretField(
 private fun PlainField(
     label: String,
     value: String,
-    isSaved: Boolean,
     onChange: (String) -> Unit,
     imeAction: ImeAction = ImeAction.Done,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
 ) {
     val morning = MaterialTheme.morning
-    val savedHint: (@Composable () -> Unit)? = if (isSaved) {
-        {
-            Text(
-                text  = stringResource(R.string.settings_saved_hint_db),
-                color = morning.textSecondary,
-            )
-        }
-    } else null
-
     OutlinedTextField(
         value         = value,
         onValueChange = onChange,
         label         = { Text(label, style = MorningType.Body) },
-        supportingText = savedHint,
         singleLine    = true,
         keyboardOptions = KeyboardOptions(
             capitalization     = KeyboardCapitalization.None,
