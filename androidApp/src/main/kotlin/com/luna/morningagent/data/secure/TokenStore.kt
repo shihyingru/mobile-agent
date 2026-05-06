@@ -27,9 +27,13 @@ class TokenStore(context: Context) {
     fun saveNotionToken(token: String) = prefs.edit().putString(KEY_NOTION, token).apply()
     fun getNotionToken(): String? = prefs.getString(KEY_NOTION, null)
 
+    fun saveNotionDatabaseId(id: String) = prefs.edit().putString(KEY_NOTION_DB, id).apply()
+    fun getNotionDatabaseId(): String? = prefs.getString(KEY_NOTION_DB, null)
+
     companion object {
         private const val FILE_NAME = "morning_agent_secrets"
         private const val KEY_GEMINI = "gemini_api_key"
         private const val KEY_NOTION = "notion_token"
+        private const val KEY_NOTION_DB = "notion_database_id"
     }
 }
