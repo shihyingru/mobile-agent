@@ -1,5 +1,6 @@
 package com.luna.morningagent.ui.settings
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -27,6 +28,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -53,13 +55,22 @@ fun SettingsScreen(
     modifier: Modifier = Modifier,
     vm: SettingsViewModel = viewModel(),
 ) {
+    // Drafts must not leak across visits. The ViewModel is activity-scoped, so
+    // reset state on every back-navigation (arrow + system back).
+    val handleBack = {
+        vm.clearDrafts()
+        onBack()
+    }
+    BackHandler { handleBack() }
     SettingsScreenContent(
-        uiState             = vm.uiState,
-        onGeminiDraftChange = vm::updateGeminiDraft,
-        onNotionDraftChange = vm::updateNotionDraft,
-        onSave              = vm::save,
-        onBack              = onBack,
-        modifier            = modifier,
+        uiState               = vm.uiState,
+        onGeminiDraftChange   = vm::updateGeminiDraft,
+        onNotionDraftChange   = vm::updateNotionDraft,
+        onDatabaseDraftChange = vm::updateDatabaseDraft,
+        onSave                = vm::save,
+        onTestNotion          = vm::testNotionConnection,
+        onBack                = handleBack,
+        modifier              = modifier,
     )
 }
 
@@ -69,14 +80,18 @@ private fun SettingsScreenContent(
     uiState: SettingsUiState,
     onGeminiDraftChange: (String) -> Unit,
     onNotionDraftChange: (String) -> Unit,
+    onDatabaseDraftChange: (String) -> Unit,
     onSave: () -> Unit,
+    onTestNotion: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val morning = MaterialTheme.morning
     val focusManager = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
-    val canSubmit = uiState.geminiDraft.isNotEmpty() && uiState.notionDraft.isNotEmpty()
+    val canSave = uiState.geminiDraft.isNotEmpty() ||
+        uiState.notionDraft.isNotEmpty() ||
+        uiState.databaseDraft != uiState.savedDatabaseId
 
     Scaffold(
         modifier       = modifier,
@@ -109,7 +124,13 @@ private fun SettingsScreenContent(
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Text(
-                text  = stringResource(R.string.settings_section_keys),
+                text  = stringResource(R.string.settings_intro),
+                style = MorningType.Body,
+                color = morning.textSecondary,
+            )
+
+            Text(
+                text  = stringResource(R.string.settings_section_credentials),
                 style = MorningType.Label,
                 color = morning.textMuted,
             )
@@ -130,10 +151,29 @@ private fun SettingsScreenContent(
                 draft       = uiState.notionDraft,
                 savedLast4  = uiState.notionSavedLast4,
                 onChange    = onNotionDraftChange,
+                imeAction   = ImeAction.Next,
+                keyboardActions = KeyboardActions(
+                    onNext = { focusManager.moveFocus(FocusDirection.Down) },
+                ),
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                text  = stringResource(R.string.settings_section_data_source),
+                style = MorningType.Label,
+                color = morning.textMuted,
+            )
+
+            PlainField(
+                label       = stringResource(R.string.settings_field_database),
+                value       = uiState.databaseDraft,
+                isSaved     = uiState.savedDatabaseId.isNotEmpty(),
+                onChange    = onDatabaseDraftChange,
                 imeAction   = ImeAction.Send,
                 keyboardActions = KeyboardActions(
                     onSend = {
-                        if (canSubmit) {
+                        if (canSave) {
                             keyboard?.hide()
                             focusManager.clearFocus()
                             onSave()
@@ -146,7 +186,7 @@ private fun SettingsScreenContent(
 
             Button(
                 onClick  = onSave,
-                enabled  = uiState.geminiDraft.isNotEmpty() || uiState.notionDraft.isNotEmpty(),
+                enabled  = canSave,
                 shape    = RoundedCornerShape(12.dp),
                 colors   = ButtonDefaults.buttonColors(
                     containerColor         = morning.accent,
@@ -173,6 +213,42 @@ private fun SettingsScreenContent(
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
+
+            // Notion connection test — only useful once a token + DB are saved.
+            val testEnabled = uiState.notionSavedLast4 != null &&
+                uiState.savedDatabaseId.isNotEmpty() &&
+                uiState.notionTest !is NotionTestResult.InProgress
+
+            TextButton(
+                onClick  = onTestNotion,
+                enabled  = testEnabled,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(
+                    text  = stringResource(R.string.settings_button_test),
+                    style = MorningType.Body,
+                    color = if (testEnabled) morning.accent else morning.textMuted,
+                )
+            }
+
+            when (val r = uiState.notionTest) {
+                NotionTestResult.InProgress -> Text(
+                    text  = stringResource(R.string.settings_test_in_progress),
+                    style = MorningType.Body,
+                    color = morning.textSecondary,
+                )
+                is NotionTestResult.Success -> Text(
+                    text  = stringResource(R.string.settings_test_success, r.taskCount),
+                    style = MorningType.Body,
+                    color = morning.success,
+                )
+                is NotionTestResult.Failure -> Text(
+                    text  = stringResource(R.string.settings_test_failure, r.message),
+                    style = MorningType.Body,
+                    color = morning.error,
+                )
+                null -> Unit
+            }
         }
     }
 }
@@ -187,23 +263,68 @@ private fun SecretField(
     keyboardActions: KeyboardActions = KeyboardActions.Default,
 ) {
     val morning = MaterialTheme.morning
-    val placeholder = if (!savedLast4.isNullOrEmpty()) {
-        "•••• $savedLast4 — ${stringResource(R.string.settings_placeholder_replace)}"
-    } else {
-        ""
-    }
+    val savedHint: (@Composable () -> Unit)? = if (!savedLast4.isNullOrEmpty()) {
+        {
+            Text(
+                text  = stringResource(R.string.settings_saved_hint, savedLast4),
+                color = morning.textSecondary,
+            )
+        }
+    } else null
 
     OutlinedTextField(
         value         = draft,
         onValueChange = onChange,
         label         = { Text(label, style = MorningType.Body) },
-        placeholder   = {
-            if (placeholder.isNotEmpty()) {
-                Text(placeholder, style = MorningType.Body, color = morning.textMuted)
-            }
-        },
+        supportingText = savedHint,
         singleLine    = true,
         visualTransformation = PasswordVisualTransformation(),
+        keyboardOptions = KeyboardOptions(
+            capitalization     = KeyboardCapitalization.None,
+            autoCorrectEnabled = false,
+            imeAction          = imeAction,
+        ),
+        keyboardActions = keyboardActions,
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedTextColor        = morning.textPrimary,
+            unfocusedTextColor      = morning.textPrimary,
+            focusedBorderColor      = morning.accent,
+            unfocusedBorderColor    = morning.border,
+            focusedLabelColor       = morning.accent,
+            unfocusedLabelColor     = morning.textSecondary,
+            cursorColor             = morning.accent,
+            focusedContainerColor   = morning.surface,
+            unfocusedContainerColor = morning.surface,
+        ),
+        modifier = Modifier.fillMaxWidth(),
+    )
+}
+
+@Composable
+private fun PlainField(
+    label: String,
+    value: String,
+    isSaved: Boolean,
+    onChange: (String) -> Unit,
+    imeAction: ImeAction = ImeAction.Done,
+    keyboardActions: KeyboardActions = KeyboardActions.Default,
+) {
+    val morning = MaterialTheme.morning
+    val savedHint: (@Composable () -> Unit)? = if (isSaved) {
+        {
+            Text(
+                text  = stringResource(R.string.settings_saved_hint_db),
+                color = morning.textSecondary,
+            )
+        }
+    } else null
+
+    OutlinedTextField(
+        value         = value,
+        onValueChange = onChange,
+        label         = { Text(label, style = MorningType.Body) },
+        supportingText = savedHint,
+        singleLine    = true,
         keyboardOptions = KeyboardOptions(
             capitalization     = KeyboardCapitalization.None,
             autoCorrectEnabled = false,
@@ -230,11 +351,13 @@ private fun SecretField(
 private fun SettingsEmptyPreview() {
     MorningAgentTheme {
         SettingsScreenContent(
-            uiState             = SettingsUiState(),
-            onGeminiDraftChange = {},
-            onNotionDraftChange = {},
-            onSave              = {},
-            onBack              = {},
+            uiState               = SettingsUiState(),
+            onGeminiDraftChange   = {},
+            onNotionDraftChange   = {},
+            onDatabaseDraftChange = {},
+            onSave                = {},
+            onTestNotion          = {},
+            onBack                = {},
         )
     }
 }
@@ -247,12 +370,16 @@ private fun SettingsSavedPreview() {
             uiState = SettingsUiState(
                 geminiSavedLast4 = "k7Qa",
                 notionSavedLast4 = "9F2c",
+                savedDatabaseId  = "abc123def456789012345678901234ab",
+                databaseDraft    = "abc123def456789012345678901234ab",
                 justSaved        = true,
             ),
-            onGeminiDraftChange = {},
-            onNotionDraftChange = {},
-            onSave              = {},
-            onBack              = {},
+            onGeminiDraftChange   = {},
+            onNotionDraftChange   = {},
+            onDatabaseDraftChange = {},
+            onSave                = {},
+            onTestNotion          = {},
+            onBack                = {},
         )
     }
 }
@@ -263,12 +390,15 @@ private fun SettingsTypingPreview() {
     MorningAgentTheme {
         SettingsScreenContent(
             uiState = SettingsUiState(
-                geminiDraft = "AIzaSy_PreviewKey",
+                geminiDraft   = "AIzaSy_PreviewKey",
+                databaseDraft = "https://www.notion.so/Tasks-abc123def456789012345678901234ab",
             ),
-            onGeminiDraftChange = {},
-            onNotionDraftChange = {},
-            onSave              = {},
-            onBack              = {},
+            onGeminiDraftChange   = {},
+            onNotionDraftChange   = {},
+            onDatabaseDraftChange = {},
+            onSave                = {},
+            onTestNotion          = {},
+            onBack                = {},
         )
     }
 }
