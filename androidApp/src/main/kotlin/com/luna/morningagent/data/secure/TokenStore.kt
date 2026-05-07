@@ -30,10 +30,16 @@ class TokenStore(context: Context) {
     fun saveNotionDatabaseId(id: String) = prefs.edit().putString(KEY_NOTION_DB, id).apply()
     fun getNotionDatabaseId(): String? = prefs.getString(KEY_NOTION_DB, null)
 
+    // Auto-run preference: when true, Home runs the agent on first composition if
+    // both keys are configured; when false, the user must tap Run Now.
+    fun saveAutoRun(enabled: Boolean) = prefs.edit().putBoolean(KEY_AUTO_RUN, enabled).apply()
+    fun getAutoRun(): Boolean = prefs.getBoolean(KEY_AUTO_RUN, true)
+
     companion object {
         private const val FILE_NAME = "morning_agent_secrets"
         private const val KEY_GEMINI = "gemini_api_key"
         private const val KEY_NOTION = "notion_token"
         private const val KEY_NOTION_DB = "notion_database_id"
+        private const val KEY_AUTO_RUN = "auto_run_on_launch"
     }
 }

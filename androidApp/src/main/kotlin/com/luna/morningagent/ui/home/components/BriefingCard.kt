@@ -77,9 +77,19 @@ fun BriefingCard(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Footer: model · timestamp · token count
+                // Footer: model · timestamp · (tokens, when known)
+                val footer = buildString {
+                    append(briefing.model)
+                    append("  ·  ")
+                    append(timeString)
+                    if (briefing.tokens > 0) {
+                        append("  ·  ")
+                        append(briefing.tokens)
+                        append(" tok")
+                    }
+                }
                 Text(
-                    text  = "${briefing.model}  ·  $timeString  ·  ${briefing.tokens} tok",
+                    text  = footer,
                     style = MorningType.Mono,
                     color = morning.textMuted,
                 )

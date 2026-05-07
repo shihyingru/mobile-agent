@@ -26,6 +26,7 @@ data class SettingsUiState(
     val geminiSavedLast4: String? = null,    // null = nothing saved yet
     val notionSavedLast4: String? = null,
     val savedDatabaseId: String  = "",       // shown in field as draft starting value
+    val autoRun: Boolean         = true,     // toggled directly, not via Save
     val justSaved: Boolean       = false,
     val notionTest: NotionTestResult? = null,
 )
@@ -45,6 +46,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             notionSavedLast4 = store.getNotionToken()?.takeLast(4)?.takeIf { it.isNotEmpty() },
             savedDatabaseId  = savedDb,
             databaseDraft    = savedDb,
+            autoRun          = store.getAutoRun(),
         )
     }
 
@@ -58,6 +60,13 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     fun updateDatabaseDraft(value: String) {
         uiState = uiState.copy(databaseDraft = value, justSaved = false, notionTest = null)
+    }
+
+    // Auto-run is a UX preference, not a credential — persist on toggle so users
+    // don't have to remember to tap Save after flipping it.
+    fun setAutoRun(enabled: Boolean) {
+        store.saveAutoRun(enabled)
+        uiState = uiState.copy(autoRun = enabled)
     }
 
     // Reset all in-flight edits back to "what's persisted." Called when the user
@@ -104,6 +113,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             geminiSavedLast4 = store.getGeminiKey()?.takeLast(4)?.takeIf { it.isNotEmpty() },
             notionSavedLast4 = store.getNotionToken()?.takeLast(4)?.takeIf { it.isNotEmpty() },
             savedDatabaseId  = cleanedDb,
+            autoRun          = uiState.autoRun,
             justSaved        = true,
         )
 

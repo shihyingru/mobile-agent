@@ -33,5 +33,8 @@
     <string name="settings_test_in_progress">Connecting…</string>
     <string name="settings_test_success">Found %1$d high-priority task(s)</string>
     <string name="settings_test_failure">Failed: %1$s</string>
+    <string name="settings_section_behavior">BEHAVIOR</string>
+    <string name="settings_auto_run_label">Auto-run on launch</string>
+    <string name="settings_auto_run_help">When on, the agent runs as soon as you open the app. When off, tap Run Now.</string>
     <string name="cd_back">Back</string>
 </resources>
