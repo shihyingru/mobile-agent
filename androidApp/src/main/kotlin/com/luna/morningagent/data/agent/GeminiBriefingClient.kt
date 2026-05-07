@@ -25,7 +25,10 @@ class GeminiBriefingClient(
     private val tokenStore: TokenStore,
 ) : BriefingGenerator {
 
-    override suspend fun generate(tasks: List<Task>): BriefingDraft {
+    override suspend fun generate(
+        tasks: List<Task>,
+        onAttempt: (Int, Int) -> Unit,
+    ): BriefingDraft {
         val apiKey = tokenStore.getGeminiKey()
             ?: throw GeminiKeyMissingException("Gemini API key not set in Settings")
 
@@ -39,7 +42,7 @@ class GeminiBriefingClient(
         }
 
         val executor = simpleGoogleAIExecutor(apiKey)
-        val responses = runWithRetry {
+        val responses = runWithRetry(onAttempt) {
             executor.execute(prompt = buildPrompt(tasks), model = MODEL)
         }
 
@@ -65,8 +68,14 @@ class GeminiBriefingClient(
 
     // Retry transient Google AI failures (503 UNAVAILABLE, model overloaded, 429
     // RESOURCE_EXHAUSTED). Other failures — auth, parse, network down — fail fast.
-    private suspend fun <T> runWithRetry(block: suspend () -> T): T {
+    // Fires onAttempt before each try so the UI can show "Retrying… (n/total)".
+    private suspend fun <T> runWithRetry(
+        onAttempt: (Int, Int) -> Unit,
+        block: suspend () -> T,
+    ): T {
+        val total = RETRY_BACKOFFS_MS.size + 1
         for (i in RETRY_BACKOFFS_MS.indices) {
+            onAttempt(i + 1, total)
             try {
                 return block()
             } catch (e: Exception) {
@@ -74,6 +83,7 @@ class GeminiBriefingClient(
                 delay(RETRY_BACKOFFS_MS[i])
             }
         }
+        onAttempt(total, total)
         return block()
     }
 

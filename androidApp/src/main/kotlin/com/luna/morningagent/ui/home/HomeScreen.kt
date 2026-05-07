@@ -117,6 +117,23 @@ private fun HomeScreenContent(
         // Agent status card
         item {
             AgentStatusCard(isLoading = isLoading, onRunNow = onRunNow)
+            // Retry hint: only after the first attempt has already failed and been
+            // absorbed by the transient-error backoff in GeminiBriefingClient.
+            val retry = (uiState as? HomeUiState.Loading)?.takeIf { it.attempt > 1 }
+            if (retry != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text      = stringResource(
+                        R.string.retrying_attempt,
+                        retry.attempt,
+                        retry.total,
+                    ),
+                    style     = MorningType.Label,
+                    color     = morning.textMuted,
+                    textAlign = TextAlign.Center,
+                    modifier  = Modifier.fillMaxWidth(),
+                )
+            }
             Spacer(modifier = Modifier.height(28.dp))
         }
 
@@ -347,7 +364,7 @@ private fun HomeSuccessPreview() {
 private fun HomeLoadingPreview() {
     MorningAgentTheme {
         HomeScreenContent(
-            uiState              = HomeUiState.Loading,
+            uiState              = HomeUiState.Loading(),
             onRunNow             = {},
             onNavigateToSettings = {},
         )

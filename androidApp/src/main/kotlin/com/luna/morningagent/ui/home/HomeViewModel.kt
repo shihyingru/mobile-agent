@@ -16,7 +16,9 @@ import com.luna.morningagent.data.secure.TokenStore
 import kotlinx.coroutines.launch
 
 sealed interface HomeUiState {
-    data object Loading : HomeUiState
+    // attempt/total surface the retry hint in the UI: when attempt > 1 we show
+    // "Retrying… (attempt/total)" so the user knows the spinner isn't stuck.
+    data class  Loading(val attempt: Int = 1, val total: Int = 1) : HomeUiState
     data class  Success(val briefing: Briefing) : HomeUiState
     data object Empty   : HomeUiState
     data class  Error(val message: String) : HomeUiState
@@ -42,10 +44,12 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun runNow() {
-        uiState = HomeUiState.Loading
+        uiState = HomeUiState.Loading()
         viewModelScope.launch {
             uiState = try {
-                HomeUiState.Success(repo.runAgent())
+                HomeUiState.Success(repo.runAgent { current, total ->
+                    uiState = HomeUiState.Loading(current, total)
+                })
             } catch (e: AgentConfigMissingException) {
                 HomeUiState.Error(e.message ?: "Missing configuration")
             } catch (e: AgentNetworkException) {
