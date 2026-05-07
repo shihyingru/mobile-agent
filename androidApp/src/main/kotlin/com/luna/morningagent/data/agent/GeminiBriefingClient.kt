@@ -1,8 +1,11 @@
 package com.luna.morningagent.data.agent
 
-import ai.koog.agents.core.agent.AIAgent
+import ai.koog.prompt.dsl.Prompt
+import ai.koog.prompt.dsl.prompt
 import ai.koog.prompt.executor.clients.google.GoogleModels
 import ai.koog.prompt.executor.llms.all.simpleGoogleAIExecutor
+import ai.koog.prompt.message.Message
+import ai.koog.prompt.params.LLMParams
 import com.luna.morningagent.data.model.Task
 import com.luna.morningagent.data.secure.TokenStore
 import kotlinx.coroutines.delay
@@ -16,9 +19,8 @@ import kotlinx.serialization.json.Json
 // Gemini Notion as a tool — adding tool-calling latency and failure modes for a
 // daily briefing isn't worth it. The interface keeps this swappable.
 //
-// Token usage isn't yet surfaced through Koog's `agent.run(): String`, so we
-// return 0 and the UI hides the count. // TODO(Phase 2 step3 polish: pull tokens
-// off Koog's response once the API surface is confirmed).
+// Uses the lower-level executor.execute() (not AIAgent.run) so we can read token
+// counts off Message.Assistant.metaInfo.
 class GeminiBriefingClient(
     private val tokenStore: TokenStore,
 ) : BriefingGenerator {
@@ -36,33 +38,40 @@ class GeminiBriefingClient(
             )
         }
 
-        val agent = AIAgent(
-            promptExecutor = simpleGoogleAIExecutor(apiKey),
-            llmModel       = MODEL,
-            systemPrompt   = SYSTEM_PROMPT,
-            temperature    = 0.6,
-        )
+        val executor = simpleGoogleAIExecutor(apiKey)
+        val responses = runWithRetry {
+            executor.execute(prompt = buildPrompt(tasks), model = MODEL)
+        }
 
-        val response = runWithRetry { agent.run(buildUserPrompt(tasks)) }
-        val parsed = parseResponse(response)
+        val assistant = responses.filterIsInstance<Message.Assistant>().firstOrNull()
+            ?: error("Gemini returned no assistant response")
+        val parsed = parseResponse(assistant.content)
 
         return BriefingDraft(
             summary      = parsed.summary.ifBlank { FALLBACK_SUMMARY },
             tipsByTaskId = parsed.tips,
             model        = MODEL_DISPLAY,
-            tokens       = 0,
+            tokens       = assistant.metaInfo.totalTokensCount ?: 0,
         )
+    }
+
+    private fun buildPrompt(tasks: List<Task>): Prompt = prompt(
+        id     = "morning-briefing",
+        params = LLMParams(temperature = TEMPERATURE),
+    ) {
+        system(SYSTEM_PROMPT)
+        user(buildUserMessage(tasks))
     }
 
     // Retry transient Google AI failures (503 UNAVAILABLE, model overloaded, 429
     // RESOURCE_EXHAUSTED). Other failures — auth, parse, network down — fail fast.
-    private suspend fun runWithRetry(block: suspend () -> String): String {
-        for (attempt in RETRY_BACKOFFS_MS.indices) {
+    private suspend fun <T> runWithRetry(block: suspend () -> T): T {
+        for (i in RETRY_BACKOFFS_MS.indices) {
             try {
                 return block()
             } catch (e: Exception) {
                 if (!isTransient(e)) throw e
-                delay(RETRY_BACKOFFS_MS[attempt])
+                delay(RETRY_BACKOFFS_MS[i])
             }
         }
         return block()
@@ -83,7 +92,7 @@ class GeminiBriefingClient(
         return false
     }
 
-    private fun buildUserPrompt(tasks: List<Task>): String = buildString {
+    private fun buildUserMessage(tasks: List<Task>): String = buildString {
         appendLine("Today's high-priority tasks:")
         appendLine()
         tasks.forEach { t ->
@@ -119,6 +128,7 @@ class GeminiBriefingClient(
     companion object {
         private val MODEL = GoogleModels.Gemini2_5Flash
         private const val MODEL_DISPLAY = "gemini-2.5-flash"
+        private const val TEMPERATURE = 0.6
         // 4 attempts total: try, wait 1s, try, wait 3s, try, wait 7s, try.
         private val RETRY_BACKOFFS_MS = longArrayOf(1_000L, 3_000L, 7_000L)
         private const val FALLBACK_SUMMARY =
