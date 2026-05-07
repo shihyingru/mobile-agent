@@ -35,12 +35,28 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     var uiState by mutableStateOf<HomeUiState>(HomeUiState.Empty)
         private set
 
+    // Selected Gemini model id (e.g. "gemini-2.5-flash"). The Home picker reads
+    // this and writes through setModel(); the agent layer resolves it on each
+    // generate() call so the next Run Now picks up the new choice.
+    var selectedModelId by mutableStateOf(tokenStore.getGeminiModel())
+        private set
+
+    // Drives the picker's visibility on Home — no key, no picker. Read fresh each
+    // recomposition so it flips on after the user saves a key in Settings.
+    val isGeminiConfigured: Boolean
+        get() = !tokenStore.getGeminiKey().isNullOrEmpty()
+
     init {
         // Auto-run on first composition when the user has opted in AND keys are
         // configured. Otherwise stay Empty so they can read Settings or tap Run Now.
         if (tokenStore.getAutoRun() && hasMinimalConfig()) {
             runNow()
         }
+    }
+
+    fun setModel(id: String) {
+        tokenStore.saveGeminiModel(id)
+        selectedModelId = id
     }
 
     fun runNow() {

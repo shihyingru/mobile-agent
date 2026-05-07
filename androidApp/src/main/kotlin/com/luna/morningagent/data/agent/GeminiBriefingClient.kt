@@ -2,7 +2,6 @@ package com.luna.morningagent.data.agent
 
 import ai.koog.prompt.dsl.Prompt
 import ai.koog.prompt.dsl.prompt
-import ai.koog.prompt.executor.clients.google.GoogleModels
 import ai.koog.prompt.executor.llms.all.simpleGoogleAIExecutor
 import ai.koog.prompt.message.Message
 import ai.koog.prompt.params.LLMParams
@@ -32,18 +31,22 @@ class GeminiBriefingClient(
         val apiKey = tokenStore.getGeminiKey()
             ?: throw GeminiKeyMissingException("Gemini API key not set in Settings")
 
+        // Resolved fresh on each call so today's pick from the Home picker takes
+        // effect on the next Run Now without restarting the app.
+        val option = GeminiModelOption.fromId(tokenStore.getGeminiModel())
+
         if (tasks.isEmpty()) {
             return BriefingDraft(
                 summary      = "No high-priority tasks today. Take the morning back.",
                 tipsByTaskId = emptyMap(),
-                model        = MODEL_DISPLAY,
+                model        = option.id,
                 tokens       = 0,
             )
         }
 
         val executor = simpleGoogleAIExecutor(apiKey)
         val responses = runWithRetry(onAttempt) {
-            executor.execute(prompt = buildPrompt(tasks), model = MODEL)
+            executor.execute(prompt = buildPrompt(tasks), model = option.koogModel)
         }
 
         val assistant = responses.filterIsInstance<Message.Assistant>().firstOrNull()
@@ -53,7 +56,7 @@ class GeminiBriefingClient(
         return BriefingDraft(
             summary      = parsed.summary.ifBlank { FALLBACK_SUMMARY },
             tipsByTaskId = parsed.tips,
-            model        = MODEL_DISPLAY,
+            model        = option.id,
             tokens       = assistant.metaInfo.totalTokensCount ?: 0,
         )
     }
@@ -136,8 +139,6 @@ class GeminiBriefingClient(
     )
 
     companion object {
-        private val MODEL = GoogleModels.Gemini2_5Flash
-        private const val MODEL_DISPLAY = "gemini-2.5-flash"
         private const val TEMPERATURE = 0.6
         // 4 attempts total: try, wait 1s, try, wait 3s, try, wait 7s, try.
         private val RETRY_BACKOFFS_MS = longArrayOf(1_000L, 3_000L, 7_000L)

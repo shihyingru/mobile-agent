@@ -35,11 +35,18 @@ class TokenStore(context: Context) {
     fun saveAutoRun(enabled: Boolean) = prefs.edit().putBoolean(KEY_AUTO_RUN, enabled).apply()
     fun getAutoRun(): Boolean = prefs.getBoolean(KEY_AUTO_RUN, true)
 
+    // Selected Gemini model id (stable, e.g. "gemini-2.5-flash"). Resolved through
+    // GeminiModelOption.fromId at the agent layer so unknown ids fall back safely.
+    fun saveGeminiModel(id: String) = prefs.edit().putString(KEY_GEMINI_MODEL, id).apply()
+    fun getGeminiModel(): String = prefs.getString(KEY_GEMINI_MODEL, null) ?: DEFAULT_GEMINI_MODEL
+
     companion object {
         private const val FILE_NAME = "morning_agent_secrets"
         private const val KEY_GEMINI = "gemini_api_key"
         private const val KEY_NOTION = "notion_token"
         private const val KEY_NOTION_DB = "notion_database_id"
         private const val KEY_AUTO_RUN = "auto_run_on_launch"
+        private const val KEY_GEMINI_MODEL = "gemini_model_id"
+        private const val DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
     }
 }
