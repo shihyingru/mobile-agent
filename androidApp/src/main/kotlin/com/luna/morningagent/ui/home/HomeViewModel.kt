@@ -1,13 +1,18 @@
 package com.luna.morningagent.ui.home
 
+import android.app.Application
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.lifecycle.ViewModel
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.luna.morningagent.data.PreviewData
+import com.luna.morningagent.data.AgentConfigMissingException
+import com.luna.morningagent.data.AgentNetworkException
+import com.luna.morningagent.data.AgentRepository
+import com.luna.morningagent.data.agent.GeminiBriefingClient
 import com.luna.morningagent.data.model.Briefing
-import kotlinx.coroutines.delay
+import com.luna.morningagent.data.notion.NotionRestClient
+import com.luna.morningagent.data.secure.TokenStore
 import kotlinx.coroutines.launch
 
 sealed interface HomeUiState {
@@ -17,17 +22,42 @@ sealed interface HomeUiState {
     data class  Error(val message: String) : HomeUiState
 }
 
-class HomeViewModel : ViewModel() {
-    var uiState by mutableStateOf<HomeUiState>(HomeUiState.Success(PreviewData.sampleBriefing))
+class HomeViewModel(application: Application) : AndroidViewModel(application) {
+
+    private val tokenStore = TokenStore(application)
+    private val repo = AgentRepository(
+        notionTaskSource  = NotionRestClient(tokenStore),
+        briefingGenerator = GeminiBriefingClient(tokenStore),
+    )
+
+    var uiState by mutableStateOf<HomeUiState>(HomeUiState.Empty)
         private set
+
+    init {
+        // Auto-run on first composition when the user has opted in AND keys are
+        // configured. Otherwise stay Empty so they can read Settings or tap Run Now.
+        if (tokenStore.getAutoRun() && hasMinimalConfig()) {
+            runNow()
+        }
+    }
 
     fun runNow() {
         uiState = HomeUiState.Loading
         viewModelScope.launch {
-            // Phase 1: simulate 1.5s agent run, then show the same mock data
-            delay(1500)
-            // TODO(Phase 2): replace with AgentRepository.runAgent()
-            uiState = HomeUiState.Success(PreviewData.sampleBriefing)
+            uiState = try {
+                HomeUiState.Success(repo.runAgent())
+            } catch (e: AgentConfigMissingException) {
+                HomeUiState.Error(e.message ?: "Missing configuration")
+            } catch (e: AgentNetworkException) {
+                HomeUiState.Error(e.message ?: "Network error")
+            } catch (e: Exception) {
+                HomeUiState.Error(e.message ?: "Something went wrong")
+            }
         }
     }
+
+    private fun hasMinimalConfig(): Boolean =
+        !tokenStore.getGeminiKey().isNullOrEmpty() &&
+        !tokenStore.getNotionToken().isNullOrEmpty() &&
+        !tokenStore.getNotionDatabaseId().isNullOrEmpty()
 }
