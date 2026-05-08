@@ -206,8 +206,9 @@ The home screen is **one scrollable screen**. Top to bottom:
 │  TASKS                          │
 │                                 │
 │  ┌───────────────────────────┐  │
-│  │ ● HIGH                    │  │  ← Task Card 1
+│  │ ● HIGH  💼 work     ↗ Notion │  ← Task Card 1
 │  │ Write SDK documentation   │  │
+│  │ NOT-1042                  │  │
 │  │                           │  │
 │  │ TIP                       │  │
 │  │ Start with the public API │  │
@@ -229,7 +230,7 @@ The home screen is **one scrollable screen**. Top to bottom:
 │  │ ...                       │  │
 │  └───────────────────────────┘  │
 │                                 │
-│  Powered by Gemini · Notion MCP │  ← Footer
+│  Powered by Gemini · Notion     │  ← Footer
 │                                 │
 └─────────────────────────────────┘
 ```
@@ -261,17 +262,39 @@ The home screen is **one scrollable screen**. Top to bottom:
 - Left vertical bar (`Accent`, 3dp wide, full height)
 - Headline (count + source) in `Title`
 - Quoted advice text in `Body`, italic, `Text Primary`
+- Footer: `model · timestamp · N tok` in `Mono` `Text Muted`. The `· N tok` segment is hidden when the model didn't surface usage (`tokens == 0`)
 
 ### 5. Task Card
 - Background `Surface`, rounded 16dp, padding 20dp
 - Margin between cards: 12dp
-- Priority pill: small rounded rect, 8dp dot + uppercase label, colored by priority
-- Task title: `Headline` style
-- "TIP" label in `Label` style, `Accent` color
-- Tip body: `Body` style
-- Bottom row: time estimate (mono) + Notion link (with arrow icon, `Accent`)
+- **Top row**: PriorityPill, AreaTag (if set), spacer, NotionBadge — all in one `Row` with 8dp arrangement
+- **Priority pill**: small rounded rect, 6dp dot + uppercase label, colored by priority (`Priority High` / `Mid` / `Low`)
+- **Area tag**: rounded pill, `Accent` tint at 12% alpha, `Accent`-colored text, 14dp Material rounded icon on the left. Hidden when the task has no Area set or the lookup failed. Hardcoded icon mapping for the 5 known areas:
+  - `work` → `Icons.Rounded.Work`
+  - `life` → `Icons.Rounded.SelfImprovement`
+  - `home` → `Icons.Rounded.Home`
+  - `healthy` → `Icons.Rounded.FitnessCenter`
+  - `learn` → `Icons.Rounded.School`
+  - unknown name → text-only (no broken icon)
+- Task title: `Headline` style, `Text Primary`
+- 4dp gap to `notionRef` line below — `Mono` style, `Text Muted` (e.g. "NOT-1042")
+- "TIP" label in `Label` style, `Accent` color; tip body in `Body` style, `Text Secondary`
+- Bottom row: time estimate (mono, hidden when 0) + Notion link (arrow icon, `Accent`)
 
-### 6. Footer
+### 6. Model Picker (Home)
+
+Visible only once a Gemini API key is saved. Sits between the Agent Status Card and "TODAY'S BRIEFING".
+
+- `MODEL` section label
+- Horizontal `Row` of three pill chips, 8dp spacing, horizontally scrollable
+- Each chip: rounded 12dp, 14dp horizontal × 10dp vertical padding, 1dp border
+  - Selected: `Accent` 12% bg + `Accent` border + `Accent` label
+  - Unselected: `Surface` bg + `Border` border + `Text Primary` label
+- Two-line label: chip name in `Body`, free-tier caption (`Label` + `Text Muted`) below
+- Three options: `Flash-Lite` / `Flash` / `Pro` with directional captions ("Fastest · most free quota" / "Default · solid free quota" / "Smartest · tight free quota")
+- Selection persists immediately — no Save button. The next Run Now uses the new model.
+
+### 7. Footer
 - Centered, `Label` style, `Text Muted`
 - 24dp top padding, 32dp bottom padding
 
@@ -288,6 +311,7 @@ The home screen is **one scrollable screen**. Top to bottom:
 - Status dot pulses
 - "Run Now" button shows spinner
 - Skeleton cards (shimmer on `Surface`)
+- **Retry hint (subtitle under Agent Status Card):** when a transient error (503/UNAVAILABLE, 429/RESOURCE_EXHAUSTED) is being absorbed by the agent's retry backoff (1s / 3s / 7s, 4 attempts total), a centered subtitle reads "Retrying… (n/total)" in `Label` style + `Text Muted`. The first attempt stays silent — only attempt > 1 shows the hint.
 
 **Error (Notion auth expired / Gemini failed):**
 - Inline banner above status card, `Error` background at 10% opacity
@@ -331,8 +355,10 @@ Gemini → `ImeAction.Next` (focus moves to Notion). Notion → `ImeAction.Next`
 **Drafts cleared on leave**
 The Settings ViewModel is activity-scoped — `MorningAgentApp` switches screens via `AnimatedContent`, not a `NavHost`, so the VM persists across visits. To stop half-typed values from leaking back on re-entry, both the top-bar arrow and `BackHandler` call `clearDrafts()` before propagating `onBack` (resets secret drafts to empty, database draft back to the saved ID, and clears the test result).
 
+**`BEHAVIOR` section**
+A separator label below the test affordance, then a single row with an `Auto-run on launch` `Switch` (toggled directly, no Save needed — persisted to `TokenStore.saveAutoRun`). A short help line below explains: "When on, the agent runs as soon as you open the app. When off, tap Run Now." Default is on.
+
 **Still out of scope (later Phase 2 steps)**
-- "Run agent now" button to trigger the full Koog loop end-to-end (step 3)
 - Schedule time picker, default 9:00 AM (step 4)
 
 ---
@@ -353,11 +379,11 @@ The Settings ViewModel is activity-scoped — `MorningAgentApp` switches screens
 
 Phase 2 ships one slice per branch (`feature/<core-detail>`). When working on a given slice, do not silently bring forward later steps:
 
-- ⏳ Step 3 — Koog agent + Gemini calls: keep `AgentRepository` as `TODO()` until that branch; `HomeScreen` continues to read `PreviewData` for mock data in the meantime.
 - ⏳ Step 4 — WorkManager schedule + briefing notification: keep `MorningAgentWorker` as `TODO()` until that branch.
 
 Already shipped (don't re-stub):
 - ✅ Step 1 — `TokenStore` (EncryptedSharedPreferences) + Settings UI.
 - ✅ Step 2 — `NotionRestClient` + `NotionTaskSource` interface; Settings DB field, intro text, Test connection affordance, inline `****<last4>` saved-state mask, drafts cleared on back.
+- ✅ Step 3 — Koog + Gemini agent. Token surfacing via `executor.execute`, retry-with-hint for transient 503/429, model picker on Home, `BEHAVIOR` / Auto-run toggle in Settings, overdue+today Notion filter, Area tag with per-area icons.
 
 The point of slicing is to keep each PR small enough to actually review on a real device.

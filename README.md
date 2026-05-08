@@ -9,7 +9,7 @@ Phase 2 — real wiring, in progress.
 - ✅ Phase 1 — UI prototype
 - ✅ Step 1 — secure token storage + Settings
 - ✅ Step 2 — Notion REST client + connection test
-- ⏳ Step 3 — Koog agent + Gemini
+- ✅ Step 3 — Koog + Gemini agent (token surfacing, retry hint, model picker on Home, auto-run toggle, overdue+today Notion filter, Area tag with per-area icons)
 - ⏳ Step 4 — WorkManager schedule + briefing notification
 
 ## Stack
@@ -29,7 +29,19 @@ Open the project in Android Studio Koala or newer.
 
 API keys (Gemini key, Notion integration token, Notion database URL/ID) are entered in the in-app Settings screen and persisted with `EncryptedSharedPreferences`. Nothing is checked in.
 
-The Notion database needs columns: `Task` (title), `Priority` (select with `High` / `Medium` / `Low`), `Estimated Time` (number, optional). Extra columns are ignored.
+The Notion database needs these columns:
+
+| Column     | Type     | How it's used                                                                 |
+|------------|----------|-------------------------------------------------------------------------------|
+| `Task`     | title    | Task title                                                                    |
+| `Priority` | select   | Filtered to `High`; `Medium` / `Low` mapped from the same select for display |
+| `Status`   | status   | Filtered to `!= Done`                                                         |
+| `Date`     | date     | Filtered to `on_or_before` today; results sorted descending                   |
+| `Area`     | relation | Linked page's title is shown as a tag on each task card                       |
+
+The Notion integration must be shared with **both** the Tasks database and the Areas database — they're separate connections in Notion's `...` → Connections menu. If Area tags don't appear despite tasks having relations set, the Areas DB likely isn't connected to the same integration.
+
+On the home screen, a model picker (visible once a Gemini key is saved) lets you switch between `gemini-2.5-flash-lite` / `flash` / `pro` for the next Run Now. The pick persists across launches.
 
 ## Docs
 
