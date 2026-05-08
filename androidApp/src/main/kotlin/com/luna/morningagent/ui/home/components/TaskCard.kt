@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -72,10 +73,12 @@ fun TaskCard(
             .padding(20.dp),
     ) {
         Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier          = Modifier.fillMaxWidth(),
+            verticalAlignment     = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier              = Modifier.fillMaxWidth(),
         ) {
             PriorityPill(priority = task.priority)
+            task.area?.takeIf { it.isNotBlank() }?.let { AreaTag(name = it) }
             Spacer(modifier = Modifier.weight(1f))
             NotionBadge()
         }
@@ -87,6 +90,8 @@ fun TaskCard(
             style = MorningType.Headline,
             color = morning.textPrimary,
         )
+
+        Spacer(modifier = Modifier.height(4.dp))
 
         Text(
             text  = task.notionRef,
@@ -113,11 +118,15 @@ fun TaskCard(
         Spacer(modifier = Modifier.height(12.dp))
 
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text  = "Est. $estimatedLabel",
-                style = MorningType.Mono,
-                color = morning.textSecondary,
-            )
+            // Hide the estimate line when the field is 0 — current Notion schema
+            // doesn't carry "Estimated Time", so most rows would otherwise read "Est. 0m".
+            if (task.estimatedMinutes > 0) {
+                Text(
+                    text  = "Est. $estimatedLabel",
+                    style = MorningType.Mono,
+                    color = morning.textSecondary,
+                )
+            }
             Spacer(modifier = Modifier.weight(1f))
             Icon(
                 imageVector        = Icons.AutoMirrored.Rounded.OpenInNew,
