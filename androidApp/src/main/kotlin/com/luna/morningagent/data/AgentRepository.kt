@@ -18,7 +18,7 @@ class AgentRepository(
     // Throws AgentConfigMissingException when keys aren't set, AgentNetworkException
     // for transport failures, IllegalStateException for parse / unexpected errors.
     // Callers (HomeViewModel) translate these to UI states.
-    suspend fun runAgent(): Briefing {
+    suspend fun runAgent(onAttempt: (Int, Int) -> Unit = { _, _ -> }): Briefing {
         val tasks = try {
             notionTaskSource.fetchHighPriorityTasks()
         } catch (e: NotionConfigMissingException) {
@@ -28,7 +28,7 @@ class AgentRepository(
         }
 
         val draft = try {
-            briefingGenerator.generate(tasks)
+            briefingGenerator.generate(tasks, onAttempt)
         } catch (e: GeminiKeyMissingException) {
             throw AgentConfigMissingException(e.message ?: "Gemini not configured", e)
         } catch (e: Exception) {

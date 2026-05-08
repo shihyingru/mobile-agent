@@ -7,7 +7,12 @@ import com.luna.morningagent.data.model.Task
 // so the agent layer can be swapped (different LLM, different framework) without
 // touching the repository or the UI.
 interface BriefingGenerator {
-    suspend fun generate(tasks: List<Task>): BriefingDraft
+    // onAttempt fires before each attempt (current=1..total) so the UI can show
+    // a "Retrying… (n/total)" hint when transient errors are being absorbed.
+    suspend fun generate(
+        tasks: List<Task>,
+        onAttempt: (current: Int, total: Int) -> Unit = { _, _ -> },
+    ): BriefingDraft
 }
 
 data class BriefingDraft(

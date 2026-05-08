@@ -45,6 +45,7 @@ import com.luna.morningagent.data.PreviewData
 import com.luna.morningagent.data.model.Briefing
 import com.luna.morningagent.ui.home.components.AgentStatusCard
 import com.luna.morningagent.ui.home.components.BriefingCard
+import com.luna.morningagent.ui.home.components.ModelPicker
 import com.luna.morningagent.ui.home.components.SectionLabel
 import com.luna.morningagent.ui.home.components.TaskCard
 import com.luna.morningagent.ui.theme.ColorBackground
@@ -62,7 +63,10 @@ fun HomeScreen(
 ) {
     HomeScreenContent(
         uiState              = vm.uiState,
+        selectedModelId      = vm.selectedModelId,
+        isGeminiConfigured   = vm.isGeminiConfigured,
         onRunNow             = vm::runNow,
+        onSelectModel        = vm::setModel,
         onNavigateToSettings = onNavigateToSettings,
         modifier             = modifier,
     )
@@ -71,7 +75,10 @@ fun HomeScreen(
 @Composable
 private fun HomeScreenContent(
     uiState: HomeUiState,
+    selectedModelId: String,
+    isGeminiConfigured: Boolean,
     onRunNow: () -> Unit,
+    onSelectModel: (String) -> Unit,
     onNavigateToSettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -117,7 +124,35 @@ private fun HomeScreenContent(
         // Agent status card
         item {
             AgentStatusCard(isLoading = isLoading, onRunNow = onRunNow)
+            // Retry hint: only after the first attempt has already failed and been
+            // absorbed by the transient-error backoff in GeminiBriefingClient.
+            val retry = (uiState as? HomeUiState.Loading)?.takeIf { it.attempt > 1 }
+            if (retry != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text      = stringResource(
+                        R.string.retrying_attempt,
+                        retry.attempt,
+                        retry.total,
+                    ),
+                    style     = MorningType.Label,
+                    color     = morning.textMuted,
+                    textAlign = TextAlign.Center,
+                    modifier  = Modifier.fillMaxWidth(),
+                )
+            }
             Spacer(modifier = Modifier.height(28.dp))
+        }
+
+        // Model picker: hidden until the user saves a Gemini key in Settings.
+        if (isGeminiConfigured) {
+            item {
+                ModelPicker(
+                    selected = selectedModelId,
+                    onSelect = onSelectModel,
+                )
+                Spacer(modifier = Modifier.height(28.dp))
+            }
         }
 
         when (uiState) {
@@ -336,7 +371,10 @@ private fun HomeSuccessPreview() {
     MorningAgentTheme {
         HomeScreenContent(
             uiState              = HomeUiState.Success(PreviewData.sampleBriefing),
+            selectedModelId      = "gemini-2.5-flash",
+            isGeminiConfigured   = true,
             onRunNow             = {},
+            onSelectModel        = {},
             onNavigateToSettings = {},
         )
     }
@@ -347,8 +385,11 @@ private fun HomeSuccessPreview() {
 private fun HomeLoadingPreview() {
     MorningAgentTheme {
         HomeScreenContent(
-            uiState              = HomeUiState.Loading,
+            uiState              = HomeUiState.Loading(),
+            selectedModelId      = "gemini-2.5-flash",
+            isGeminiConfigured   = true,
             onRunNow             = {},
+            onSelectModel        = {},
             onNavigateToSettings = {},
         )
     }
@@ -360,7 +401,10 @@ private fun HomeEmptyPreview() {
     MorningAgentTheme {
         HomeScreenContent(
             uiState              = HomeUiState.Empty,
+            selectedModelId      = "gemini-2.5-flash",
+            isGeminiConfigured   = true,
             onRunNow             = {},
+            onSelectModel        = {},
             onNavigateToSettings = {},
         )
     }
@@ -372,7 +416,10 @@ private fun HomeErrorPreview() {
     MorningAgentTheme {
         HomeScreenContent(
             uiState              = HomeUiState.Error("Couldn't reach Notion. Check your token in Settings."),
+            selectedModelId      = "gemini-2.5-flash",
+            isGeminiConfigured   = true,
             onRunNow             = {},
+            onSelectModel        = {},
             onNavigateToSettings = {},
         )
     }
