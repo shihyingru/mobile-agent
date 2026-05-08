@@ -106,12 +106,13 @@ class GeminiBriefingClient(
     }
 
     private fun buildUserMessage(tasks: List<Task>): String = buildString {
-        appendLine("Today's high-priority tasks:")
+        appendLine("Today's high-priority tasks (overdue or due today, sorted recent-first):")
         appendLine()
         tasks.forEach { t ->
             append("- id=").append(t.id)
             append(" | title=").append(t.title)
             if (t.estimatedMinutes > 0) append(" | est=${t.estimatedMinutes}m")
+            t.area?.takeIf { it.isNotBlank() }?.let { append(" | area=").append(it) }
             appendLine()
         }
         appendLine()

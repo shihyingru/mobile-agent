@@ -22,6 +22,7 @@ object PreviewData {
                 estimatedMinutes = 120,
                 notionUrl        = "https://notion.so/...",
                 notionRef        = "NOT-1042",
+                area             = "Engineering",
             ),
             Task(
                 id               = "2",
@@ -31,6 +32,7 @@ object PreviewData {
                 estimatedMinutes = 45,
                 notionUrl        = "https://notion.so/...",
                 notionRef        = "NOT-1043",
+                area             = "Engineering",
             ),
             Task(
                 id               = "3",
@@ -40,6 +42,7 @@ object PreviewData {
                 estimatedMinutes = 20,
                 notionUrl        = "https://notion.so/...",
                 notionRef        = "NOT-1044",
+                area             = "Design",
             ),
         ),
     )
