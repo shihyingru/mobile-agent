@@ -13,7 +13,7 @@
     <string name="label_items">ITEMS</string>
     <string name="label_tip">TIP</string>
     <string name="notion_link_label">Notion</string>
-    <string name="footer_powered_by">Powered by Gemini · Notion MCP</string>
+    <string name="footer_powered_by">Powered by Gemini · Notion</string>
     <string name="error_notion">Couldn\'t reach Notion. Check your token in Settings.</string>
     <string name="retrying_attempt">Retrying… (%1$d/%2$d)</string>
     <string name="section_model">MODEL</string>
