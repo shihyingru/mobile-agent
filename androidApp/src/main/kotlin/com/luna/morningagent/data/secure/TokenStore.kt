@@ -40,6 +40,28 @@ class TokenStore(context: Context) {
     fun saveGeminiModel(id: String) = prefs.edit().putString(KEY_GEMINI_MODEL, id).apply()
     fun getGeminiModel(): String = prefs.getString(KEY_GEMINI_MODEL, null) ?: DEFAULT_GEMINI_MODEL
 
+    // Daily WorkManager schedule. When true, MainActivity enqueues the
+    // PeriodicWorkRequest on launch; toggling off cancels the unique work.
+    fun saveDailyBriefingEnabled(enabled: Boolean) =
+        prefs.edit().putBoolean(KEY_DAILY_BRIEFING, enabled).apply()
+    fun getDailyBriefingEnabled(): Boolean = prefs.getBoolean(KEY_DAILY_BRIEFING, false)
+
+    // Briefing time-of-day. Stored as two ints to dodge timezone / parsing issues
+    // — the scheduler combines them with the device's current ZoneId at enqueue time.
+    fun saveDailyBriefingTime(hour: Int, minute: Int) =
+        prefs.edit()
+            .putInt(KEY_BRIEFING_HOUR, hour.coerceIn(0, 23))
+            .putInt(KEY_BRIEFING_MINUTE, minute.coerceIn(0, 59))
+            .apply()
+    fun getDailyBriefingHour(): Int = prefs.getInt(KEY_BRIEFING_HOUR, DEFAULT_HOUR)
+    fun getDailyBriefingMinute(): Int = prefs.getInt(KEY_BRIEFING_MINUTE, DEFAULT_MINUTE)
+
+    // Last successful briefing as JSON. Written by the worker so HomeViewModel can
+    // surface yesterday's-morning state on cold launch without re-running the agent.
+    fun saveLastBriefingJson(json: String) =
+        prefs.edit().putString(KEY_LAST_BRIEFING, json).apply()
+    fun getLastBriefingJson(): String? = prefs.getString(KEY_LAST_BRIEFING, null)
+
     companion object {
         private const val FILE_NAME = "morning_agent_secrets"
         private const val KEY_GEMINI = "gemini_api_key"
@@ -47,6 +69,12 @@ class TokenStore(context: Context) {
         private const val KEY_NOTION_DB = "notion_database_id"
         private const val KEY_AUTO_RUN = "auto_run_on_launch"
         private const val KEY_GEMINI_MODEL = "gemini_model_id"
+        private const val KEY_DAILY_BRIEFING = "daily_briefing_enabled"
+        private const val KEY_BRIEFING_HOUR = "daily_briefing_hour"
+        private const val KEY_BRIEFING_MINUTE = "daily_briefing_minute"
+        private const val KEY_LAST_BRIEFING = "last_briefing_json"
         private const val DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
+        private const val DEFAULT_HOUR = 9
+        private const val DEFAULT_MINUTE = 0
     }
 }

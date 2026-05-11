@@ -10,6 +10,8 @@ import com.luna.morningagent.data.notion.NotionConfigMissingException
 import com.luna.morningagent.data.notion.NotionRestClient
 import com.luna.morningagent.data.notion.NotionTaskSource
 import com.luna.morningagent.data.secure.TokenStore
+import com.luna.morningagent.worker.BriefingScheduler
+import com.luna.morningagent.worker.MorningAgentWorker
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -27,6 +29,9 @@ data class SettingsUiState(
     val notionSavedLast4: String? = null,
     val savedDatabaseId: String  = "",       // shown in field as draft starting value
     val autoRun: Boolean         = true,     // toggled directly, not via Save
+    val dailyBriefing: Boolean   = false,    // schedules WorkManager when on
+    val briefingHour: Int        = 9,
+    val briefingMinute: Int      = 0,
     val justSaved: Boolean       = false,
     val notionTest: NotionTestResult? = null,
 )
@@ -47,6 +52,9 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             savedDatabaseId  = savedDb,
             databaseDraft    = savedDb,
             autoRun          = store.getAutoRun(),
+            dailyBriefing    = store.getDailyBriefingEnabled(),
+            briefingHour     = store.getDailyBriefingHour(),
+            briefingMinute   = store.getDailyBriefingMinute(),
         )
     }
 
@@ -67,6 +75,35 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     fun setAutoRun(enabled: Boolean) {
         store.saveAutoRun(enabled)
         uiState = uiState.copy(autoRun = enabled)
+    }
+
+    // Toggles the WorkManager schedule. Application-scoped context dodges the
+    // activity-lifecycle leak warning when the ViewModel outlives a config change.
+    fun setDailyBriefing(enabled: Boolean) {
+        store.saveDailyBriefingEnabled(enabled)
+        uiState = uiState.copy(dailyBriefing = enabled)
+        val appContext = getApplication<Application>().applicationContext
+        if (enabled) BriefingScheduler.replace(appContext)
+        else BriefingScheduler.disable(appContext)
+    }
+
+    // Persists immediately + re-enqueues with the new initialDelay. Cheap to
+    // call from the time picker's confirm callback.
+    fun setBriefingTime(hour: Int, minute: Int) {
+        store.saveDailyBriefingTime(hour, minute)
+        uiState = uiState.copy(briefingHour = hour, briefingMinute = minute)
+        if (uiState.dailyBriefing) {
+            BriefingScheduler.replace(getApplication<Application>().applicationContext)
+        }
+    }
+
+    // Posts a stub notification with the channel/icon/layout the worker uses.
+    // Lets the user preview the visual + confirm POST_NOTIFICATIONS without
+    // waiting until the picked time or burning a Gemini call.
+    fun sendTestNotification() {
+        MorningAgentWorker.postSampleNotification(
+            getApplication<Application>().applicationContext,
+        )
     }
 
     // Reset all in-flight edits back to "what's persisted." Called when the user
