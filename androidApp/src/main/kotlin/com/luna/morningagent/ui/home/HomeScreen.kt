@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -42,7 +41,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.luna.morningagent.R
 import com.luna.morningagent.data.PreviewData
-import com.luna.morningagent.data.model.Briefing
 import com.luna.morningagent.ui.home.components.AgentStatusCard
 import com.luna.morningagent.ui.home.components.BriefingCard
 import com.luna.morningagent.ui.home.components.ModelPicker
@@ -65,6 +63,9 @@ fun HomeScreen(
         uiState              = vm.uiState,
         selectedModelId      = vm.selectedModelId,
         isGeminiConfigured   = vm.isGeminiConfigured,
+        nextRunLabel         = vm.nextRunLabel,
+        greetingRes          = vm.greetingRes,
+        headerSubtitle       = vm.headerSubtitle,
         onRunNow             = vm::runNow,
         onSelectModel        = vm::setModel,
         onNavigateToSettings = onNavigateToSettings,
@@ -77,6 +78,9 @@ private fun HomeScreenContent(
     uiState: HomeUiState,
     selectedModelId: String,
     isGeminiConfigured: Boolean,
+    nextRunLabel: String?,
+    @androidx.annotation.StringRes greetingRes: Int,
+    headerSubtitle: String,
     onRunNow: () -> Unit,
     onSelectModel: (String) -> Unit,
     onNavigateToSettings: () -> Unit,
@@ -106,7 +110,11 @@ private fun HomeScreenContent(
     ) {
         // Header
         item {
-            HomeHeader(onSettingsClick = onNavigateToSettings)
+            HomeHeader(
+                greetingRes     = greetingRes,
+                subtitle        = headerSubtitle,
+                onSettingsClick = onNavigateToSettings,
+            )
             Spacer(modifier = Modifier.height(24.dp))
         }
 
@@ -123,7 +131,11 @@ private fun HomeScreenContent(
 
         // Agent status card
         item {
-            AgentStatusCard(isLoading = isLoading, onRunNow = onRunNow)
+            AgentStatusCard(
+                isLoading = isLoading,
+                onRunNow = onRunNow,
+                nextRunLabel = nextRunLabel,
+            )
             // Retry hint: only after the first attempt has already failed and been
             // absorbed by the transient-error backoff in GeminiBriefingClient.
             val retry = (uiState as? HomeUiState.Loading)?.takeIf { it.attempt > 1 }
@@ -251,7 +263,11 @@ private fun HomeScreenContent(
 }
 
 @Composable
-private fun HomeHeader(onSettingsClick: () -> Unit) {
+private fun HomeHeader(
+    @androidx.annotation.StringRes greetingRes: Int,
+    subtitle: String,
+    onSettingsClick: () -> Unit,
+) {
     val morning = MaterialTheme.morning
     Row(
         modifier          = Modifier.fillMaxWidth(),
@@ -267,12 +283,12 @@ private fun HomeHeader(onSettingsClick: () -> Unit) {
         Spacer(modifier = Modifier.width(10.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text  = stringResource(R.string.greeting),
+                text  = stringResource(greetingRes),
                 style = MorningType.Display,
                 color = morning.textPrimary,
             )
             Text(
-                text  = "Tuesday · April 28",
+                text  = subtitle,
                 style = MorningType.Mono,
                 color = morning.textSecondary,
             )
@@ -373,6 +389,9 @@ private fun HomeSuccessPreview() {
             uiState              = HomeUiState.Success(PreviewData.sampleBriefing),
             selectedModelId      = "gemini-2.5-flash",
             isGeminiConfigured   = true,
+            nextRunLabel         = "tomorrow 9:00 AM",
+            greetingRes          = R.string.greeting_morning,
+            headerSubtitle       = "Tuesday · April 28",
             onRunNow             = {},
             onSelectModel        = {},
             onNavigateToSettings = {},
@@ -388,6 +407,9 @@ private fun HomeLoadingPreview() {
             uiState              = HomeUiState.Loading(),
             selectedModelId      = "gemini-2.5-flash",
             isGeminiConfigured   = true,
+            nextRunLabel         = "tomorrow 9:00 AM",
+            greetingRes          = R.string.greeting_morning,
+            headerSubtitle       = "Tuesday · April 28",
             onRunNow             = {},
             onSelectModel        = {},
             onNavigateToSettings = {},
@@ -403,6 +425,9 @@ private fun HomeEmptyPreview() {
             uiState              = HomeUiState.Empty,
             selectedModelId      = "gemini-2.5-flash",
             isGeminiConfigured   = true,
+            nextRunLabel         = "tomorrow 9:00 AM",
+            greetingRes          = R.string.greeting_morning,
+            headerSubtitle       = "Tuesday · April 28",
             onRunNow             = {},
             onSelectModel        = {},
             onNavigateToSettings = {},
@@ -418,6 +443,9 @@ private fun HomeErrorPreview() {
             uiState              = HomeUiState.Error("Couldn't reach Notion. Check your token in Settings."),
             selectedModelId      = "gemini-2.5-flash",
             isGeminiConfigured   = true,
+            nextRunLabel         = "tomorrow 9:00 AM",
+            greetingRes          = R.string.greeting_morning,
+            headerSubtitle       = "Tuesday · April 28",
             onRunNow             = {},
             onSelectModel        = {},
             onNavigateToSettings = {},

@@ -2,7 +2,10 @@
 <resources>
     <string name="app_name">Morning Agent</string>
     <string name="tagline">Your day, prepared.</string>
-    <string name="greeting">Morning, Luna</string>
+    <string name="greeting_morning">Morning, Luna</string>
+    <string name="greeting_afternoon">Afternoon, Luna</string>
+    <string name="greeting_evening">Evening, Luna</string>
+    <string name="greeting_weekend">Slow day, Luna</string>
     <string name="agent_status_label">AGENT STATUS</string>
     <string name="agent_status_active">Active</string>
     <string name="agent_status_next_run">Next run</string>
@@ -38,5 +41,16 @@
     <string name="settings_section_behavior">BEHAVIOR</string>
     <string name="settings_auto_run_label">Auto-run on launch</string>
     <string name="settings_auto_run_help">When on, the agent runs as soon as you open the app. When off, tap Run Now.</string>
+    <string name="settings_daily_briefing_label">Daily briefing notification</string>
+    <string name="settings_daily_briefing_help">Wakes the agent at your chosen time and posts the briefing as a notification.</string>
+    <string name="settings_briefing_time_label">Briefing time</string>
+    <string name="settings_time_picker_title">Pick briefing time</string>
+    <string name="settings_time_picker_confirm">Set</string>
+    <string name="settings_time_picker_cancel">Cancel</string>
+    <string name="notification_channel_briefing">Daily briefing</string>
+    <string name="notification_channel_briefing_desc">Morning Agent\'s daily summary of Notion tasks and Gemini tips.</string>
+    <string name="notification_title">Your briefing — %1$d task(s)</string>
+    <string name="notification_sample_body">Sample briefing — start with the deepest task before email tries to steal your morning.</string>
+    <string name="settings_button_test_notification">Send test notification</string>
     <string name="cd_back">Back</string>
 </resources>

@@ -4,7 +4,9 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -20,6 +22,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -33,8 +36,11 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimePicker
+import androidx.compose.material3.TimePickerDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -42,6 +48,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalFocusManager
@@ -74,15 +81,18 @@ fun SettingsScreen(
     }
     BackHandler { handleBack() }
     SettingsScreenContent(
-        uiState               = vm.uiState,
-        onGeminiDraftChange   = vm::updateGeminiDraft,
-        onNotionDraftChange   = vm::updateNotionDraft,
-        onDatabaseDraftChange = vm::updateDatabaseDraft,
-        onAutoRunChange       = vm::setAutoRun,
-        onSave                = vm::save,
-        onTestNotion          = vm::testNotionConnection,
-        onBack                = handleBack,
-        modifier              = modifier,
+        uiState                = vm.uiState,
+        onGeminiDraftChange    = vm::updateGeminiDraft,
+        onNotionDraftChange    = vm::updateNotionDraft,
+        onDatabaseDraftChange  = vm::updateDatabaseDraft,
+        onAutoRunChange        = vm::setAutoRun,
+        onDailyBriefingChange  = vm::setDailyBriefing,
+        onBriefingTimeChange   = vm::setBriefingTime,
+        onSendTestNotification = vm::sendTestNotification,
+        onSave                 = vm::save,
+        onTestNotion           = vm::testNotionConnection,
+        onBack                 = handleBack,
+        modifier               = modifier,
     )
 }
 
@@ -94,6 +104,9 @@ private fun SettingsScreenContent(
     onNotionDraftChange: (String) -> Unit,
     onDatabaseDraftChange: (String) -> Unit,
     onAutoRunChange: (Boolean) -> Unit,
+    onDailyBriefingChange: (Boolean) -> Unit,
+    onBriefingTimeChange: (Int, Int) -> Unit,
+    onSendTestNotification: () -> Unit,
     onSave: () -> Unit,
     onTestNotion: () -> Unit,
     onBack: () -> Unit,
@@ -274,6 +287,37 @@ private fun SettingsScreenContent(
                 checked = uiState.autoRun,
                 onCheckedChange = onAutoRunChange,
             )
+
+            DailyBriefingRow(
+                checked         = uiState.dailyBriefing,
+                onCheckedChange = onDailyBriefingChange,
+            )
+
+            // Time row visible only when the schedule is on — picker would have
+            // no effect otherwise, and an inert control reads as broken.
+            AnimatedVisibility(
+                visible = uiState.dailyBriefing,
+                enter   = fadeIn(),
+                exit    = fadeOut(),
+            ) {
+                Column {
+                    BriefingTimeRow(
+                        hour    = uiState.briefingHour,
+                        minute  = uiState.briefingMinute,
+                        onPick  = onBriefingTimeChange,
+                    )
+                    TextButton(
+                        onClick  = onSendTestNotification,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(
+                            text  = stringResource(R.string.settings_button_test_notification),
+                            style = MorningType.Body,
+                            color = morning.accent,
+                        )
+                    }
+                }
+            }
         }
     }
 }
@@ -283,36 +327,162 @@ private fun AutoRunRow(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
 ) {
+    SettingsToggleRow(
+        title    = stringResource(R.string.settings_auto_run_label),
+        subtitle = stringResource(R.string.settings_auto_run_help),
+        checked  = checked,
+        onCheckedChange = onCheckedChange,
+    )
+}
+
+@Composable
+private fun DailyBriefingRow(
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    SettingsToggleRow(
+        title    = stringResource(R.string.settings_daily_briefing_label),
+        subtitle = stringResource(R.string.settings_daily_briefing_help),
+        checked  = checked,
+        onCheckedChange = onCheckedChange,
+    )
+}
+
+@Composable
+private fun SettingsToggleRow(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
     val morning = MaterialTheme.morning
     Row(
         modifier          = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text  = stringResource(R.string.settings_auto_run_label),
-                style = MorningType.Body,
-                color = morning.textPrimary,
-            )
-            Text(
-                text  = stringResource(R.string.settings_auto_run_help),
-                style = MorningType.Body,
-                color = morning.textMuted,
-            )
+            Text(text = title,    style = MorningType.Body, color = morning.textPrimary)
+            Text(text = subtitle, style = MorningType.Body, color = morning.textMuted)
         }
         Spacer(modifier = Modifier.width(12.dp))
         Switch(
             checked         = checked,
             onCheckedChange = onCheckedChange,
             colors = SwitchDefaults.colors(
-                checkedThumbColor   = morning.surface,
-                checkedTrackColor   = morning.accent,
-                uncheckedThumbColor = morning.textMuted,
-                uncheckedTrackColor = morning.surface,
+                checkedThumbColor    = morning.surface,
+                checkedTrackColor    = morning.accent,
+                uncheckedThumbColor  = morning.textMuted,
+                uncheckedTrackColor  = morning.surface,
                 uncheckedBorderColor = morning.border,
             ),
         )
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun BriefingTimeRow(
+    hour: Int,
+    minute: Int,
+    onPick: (Int, Int) -> Unit,
+) {
+    val morning = MaterialTheme.morning
+    var showPicker by remember { mutableStateOf(false) }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .clickable { showPicker = true }
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text     = stringResource(R.string.settings_briefing_time_label),
+            style    = MorningType.Body,
+            color    = morning.textPrimary,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            text  = formatTime(hour, minute),
+            style = MorningType.Mono,
+            color = morning.accent,
+        )
+    }
+
+    if (showPicker) {
+        val state = rememberTimePickerState(
+            initialHour    = hour,
+            initialMinute  = minute,
+            is24Hour       = false,
+        )
+        AlertDialog(
+            onDismissRequest = { showPicker = false },
+            containerColor   = morning.surface,
+            title = {
+                Text(
+                    text  = stringResource(R.string.settings_time_picker_title),
+                    style = MorningType.Title,
+                    color = morning.textPrimary,
+                )
+            },
+            text = {
+                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    TimePicker(
+                        state  = state,
+                        colors = TimePickerDefaults.colors(
+                            clockDialColor             = ColorBackground,
+                            selectorColor              = morning.accent,
+                            containerColor             = morning.surface,
+                            periodSelectorBorderColor  = morning.border,
+                            clockDialSelectedContentColor   = morning.surface,
+                            clockDialUnselectedContentColor = morning.textPrimary,
+                            periodSelectorSelectedContainerColor   = morning.accent,
+                            periodSelectorUnselectedContainerColor = morning.surface,
+                            periodSelectorSelectedContentColor     = morning.surface,
+                            periodSelectorUnselectedContentColor   = morning.textSecondary,
+                            timeSelectorSelectedContainerColor     = morning.accent.copy(alpha = 0.2f),
+                            timeSelectorUnselectedContainerColor   = ColorBackground,
+                            timeSelectorSelectedContentColor       = morning.accent,
+                            timeSelectorUnselectedContentColor     = morning.textPrimary,
+                        ),
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    onPick(state.hour, state.minute)
+                    showPicker = false
+                }) {
+                    Text(
+                        text  = stringResource(R.string.settings_time_picker_confirm),
+                        style = MorningType.Body,
+                        color = morning.accent,
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPicker = false }) {
+                    Text(
+                        text  = stringResource(R.string.settings_time_picker_cancel),
+                        style = MorningType.Body,
+                        color = morning.textMuted,
+                    )
+                }
+            },
+        )
+    }
+}
+
+// 12-hour clock with AM/PM — matches the picker's default and Luna's locale.
+private fun formatTime(hour: Int, minute: Int): String {
+    val period = if (hour < 12) "AM" else "PM"
+    val h12 = when {
+        hour == 0       -> 12
+        hour > 12       -> hour - 12
+        else            -> hour
+    }
+    return "%d:%02d %s".format(h12, minute, period)
 }
 
 @Composable
@@ -406,10 +576,13 @@ private fun SettingsEmptyPreview() {
             onGeminiDraftChange   = {},
             onNotionDraftChange   = {},
             onDatabaseDraftChange = {},
-            onAutoRunChange       = {},
-            onSave                = {},
-            onTestNotion          = {},
-            onBack                = {},
+            onAutoRunChange        = {},
+            onDailyBriefingChange  = {},
+            onBriefingTimeChange   = { _, _ -> },
+            onSendTestNotification = {},
+            onSave                 = {},
+            onTestNotion           = {},
+            onBack                 = {},
         )
     }
 }
@@ -429,10 +602,13 @@ private fun SettingsSavedPreview() {
             onGeminiDraftChange   = {},
             onNotionDraftChange   = {},
             onDatabaseDraftChange = {},
-            onAutoRunChange       = {},
-            onSave                = {},
-            onTestNotion          = {},
-            onBack                = {},
+            onAutoRunChange        = {},
+            onDailyBriefingChange  = {},
+            onBriefingTimeChange   = { _, _ -> },
+            onSendTestNotification = {},
+            onSave                 = {},
+            onTestNotion           = {},
+            onBack                 = {},
         )
     }
 }
@@ -449,10 +625,13 @@ private fun SettingsTypingPreview() {
             onGeminiDraftChange   = {},
             onNotionDraftChange   = {},
             onDatabaseDraftChange = {},
-            onAutoRunChange       = {},
-            onSave                = {},
-            onTestNotion          = {},
-            onBack                = {},
+            onAutoRunChange        = {},
+            onDailyBriefingChange  = {},
+            onBriefingTimeChange   = { _, _ -> },
+            onSendTestNotification = {},
+            onSave                 = {},
+            onTestNotion           = {},
+            onBack                 = {},
         )
     }
 }

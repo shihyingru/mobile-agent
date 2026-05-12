@@ -1,7 +1,9 @@
 package com.luna.morningagent.data.model
 
 import kotlinx.datetime.Instant
+import kotlinx.serialization.Serializable
 
+@Serializable
 data class Briefing(
     val generatedAt: Instant,
     val summary: String,

@@ -28,7 +28,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -42,7 +41,7 @@ fun AgentStatusCard(
     isLoading: Boolean,
     onRunNow: () -> Unit,
     modifier: Modifier = Modifier,
-    nextRunLabel: String = "tomorrow 09:00",
+    nextRunLabel: String? = "tomorrow 09:00 AM",
 ) {
     val morning = MaterialTheme.morning
 
@@ -104,19 +103,22 @@ fun AgentStatusCard(
             )
         }
 
-        Spacer(modifier = Modifier.height(6.dp))
-
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text  = stringResource(R.string.agent_status_next_run),
-                style = MorningType.Body,
-                color = morning.textSecondary,
-            )
-            Text(
-                text  = " · $nextRunLabel",
-                style = MorningType.Mono,
-                color = morning.textSecondary,
-            )
+        // "Next run · today 9:00 PM" — hidden entirely when the daily-briefing
+        // schedule is off, since printing a stale fallback would mislead the user.
+        if (nextRunLabel != null) {
+            Spacer(modifier = Modifier.height(6.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text  = stringResource(R.string.agent_status_next_run),
+                    style = MorningType.Body,
+                    color = morning.textSecondary,
+                )
+                Text(
+                    text  = " · $nextRunLabel",
+                    style = MorningType.Mono,
+                    color = morning.textSecondary,
+                )
+            }
         }
 
         Spacer(modifier = Modifier.height(16.dp))
