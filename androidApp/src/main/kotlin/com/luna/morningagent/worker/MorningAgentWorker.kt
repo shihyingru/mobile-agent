@@ -28,6 +28,10 @@ import com.luna.morningagent.data.secure.TokenStore
 // Retries on failure with WorkManager's exponential backoff — Gemini's transient
 // 503/429 are already retried inside GeminiBriefingClient with bounded attempts,
 // so a Result.retry() here covers the rarer cases (no network at 9:00 AM).
+//
+// Self-rescheduling: after each terminal Result (success or final retry), the
+// worker calls BriefingScheduler.scheduleNext() so tomorrow's fire anchors to
+// the user's picked wall-clock time, not +24h from this run's start.
 class MorningAgentWorker(
     appContext: Context,
     params: WorkerParameters,
@@ -41,6 +45,7 @@ class MorningAgentWorker(
             store.getNotionToken().isNullOrEmpty() ||
             store.getNotionDatabaseId().isNullOrEmpty()
         ) {
+            BriefingScheduler.scheduleNext(applicationContext)
             return Result.success()
         }
 
@@ -50,7 +55,7 @@ class MorningAgentWorker(
             tokenStore        = store,
         )
 
-        return try {
+        val result = try {
             val briefing = repo.runAgent()
             postBriefingNotification(applicationContext, briefing)
             Result.success()
@@ -60,6 +65,13 @@ class MorningAgentWorker(
             // before giving up until tomorrow's scheduled run.
             if (runAttemptCount < MAX_RETRIES) Result.retry() else Result.success()
         }
+
+        // Re-anchor for tomorrow on every terminal result. Skip on retry so we
+        // don't queue duplicates — WorkManager will hand us another shot first.
+        if (result !is Result.Retry) {
+            BriefingScheduler.scheduleNext(applicationContext)
+        }
+        return result
     }
 
     companion object {

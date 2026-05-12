@@ -20,6 +20,7 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 sealed interface HomeUiState {
@@ -53,33 +54,23 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     val isGeminiConfigured: Boolean
         get() = !tokenStore.getGeminiKey().isNullOrEmpty()
 
-    // Header greeting, resolved from the device clock. Weekend wins over hour-of-day
-    // so Saturday morning reads "Slow day, Luna" instead of "Morning, Luna". Read
-    // fresh per recomposition so the greeting evolves through the day without a
-    // restart — cheap, and matches how Settings-side time changes propagate.
-    @get:StringRes
-    val greetingRes: Int
-        get() = greetingResFor(LocalDateTime.now())
+    // Header strings derived from the device clock. Backed by mutableStateOf + a
+    // viewModelScope ticker so labels auto-flip across midnight or the picked
+    // briefing time without waiting for a recomposition trigger. HomeScreen also
+    // calls refreshClock() on entry so Settings-side time changes land instantly.
 
-    // Subtitle under the greeting: "Monday · May 11". Forced to ENGLISH so the
-    // app's tone stays consistent even on a Chinese-locale phone, matching the
-    // English greeting strings above.
-    val headerSubtitle: String
-        get() = formatHeaderSubtitle(LocalDate.now())
+    @get:StringRes
+    var greetingRes: Int by mutableStateOf(greetingResFor(LocalDateTime.now()))
+        private set
+
+    var headerSubtitle: String by mutableStateOf(formatHeaderSubtitle(LocalDate.now()))
+        private set
 
     // "today 9:00 PM" / "tomorrow 7:30 AM" depending on the picked hour/minute and
     // whether that time has already passed today. Null when the daily-briefing
-    // toggle is off, which hides the entire "Next run" row. Recomputed on each
-    // recomposition so changes in Settings reflect immediately on navigation back.
-    val nextRunLabel: String?
-        get() {
-            if (!tokenStore.getDailyBriefingEnabled()) return null
-            return formatNextRunLabel(
-                now    = LocalDateTime.now(),
-                hour   = tokenStore.getDailyBriefingHour(),
-                minute = tokenStore.getDailyBriefingMinute(),
-            )
-        }
+    // toggle is off, which hides the entire "Next run" row.
+    var nextRunLabel: String? by mutableStateOf(computeNextRunLabel(LocalDateTime.now()))
+        private set
 
     init {
         // Auto-run on first composition when the user has opted in AND keys are
@@ -87,6 +78,35 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         if (tokenStore.getAutoRun() && hasMinimalConfig()) {
             runNow()
         }
+        startClockTicker()
+    }
+
+    // Pulls fresh clock values into the state-backed fields. Called by the ticker
+    // every 30s for passive time-of-day progression, and by HomeScreen on entry
+    // so changes made in Settings are reflected without waiting for the next tick.
+    fun refreshClock() {
+        val now = LocalDateTime.now()
+        greetingRes    = greetingResFor(now)
+        headerSubtitle = formatHeaderSubtitle(now.toLocalDate())
+        nextRunLabel   = computeNextRunLabel(now)
+    }
+
+    private fun startClockTicker() {
+        viewModelScope.launch {
+            while (isActive) {
+                kotlinx.coroutines.delay(TICK_INTERVAL_MS)
+                refreshClock()
+            }
+        }
+    }
+
+    private fun computeNextRunLabel(now: LocalDateTime): String? {
+        if (!tokenStore.getDailyBriefingEnabled()) return null
+        return formatNextRunLabel(
+            now    = now,
+            hour   = tokenStore.getDailyBriefingHour(),
+            minute = tokenStore.getDailyBriefingMinute(),
+        )
     }
 
     fun setModel(id: String) {
@@ -115,6 +135,13 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         !tokenStore.getGeminiKey().isNullOrEmpty() &&
         !tokenStore.getNotionToken().isNullOrEmpty() &&
         !tokenStore.getNotionDatabaseId().isNullOrEmpty()
+
+    private companion object {
+        // 30s strikes the balance between minute-precision labels and battery —
+        // the labels only change at minute boundaries anyway, so 30s catches
+        // every boundary within half a tick of when it happens.
+        const val TICK_INTERVAL_MS = 30_000L
+    }
 }
 
 private val HEADER_SUBTITLE_FORMAT: DateTimeFormatter =
