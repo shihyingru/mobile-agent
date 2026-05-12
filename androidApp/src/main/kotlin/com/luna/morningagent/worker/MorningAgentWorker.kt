@@ -77,8 +77,28 @@ class MorningAgentWorker(
     companion object {
         const val UNIQUE_WORK_NAME = "morning_agent_daily"
         const val CHANNEL_ID = "morning_briefing"
+        // Intent extra set by the notification's PendingIntent. MainActivity reads it
+        // on cold launch and via onNewIntent so the app jumps straight to Home —
+        // tapping a "your briefing is ready" notification shouldn't dump the user on
+        // the Launch screen or whatever screen they last left the app on.
+        const val EXTRA_FROM_NOTIFICATION = "com.luna.morningagent.FROM_NOTIFICATION"
         private const val NOTIFICATION_ID = 1001
         private const val MAX_RETRIES = 3
+
+        private fun buildOpenAppPendingIntent(context: Context): PendingIntent {
+            val openIntent = Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP
+                putExtra(EXTRA_FROM_NOTIFICATION, true)
+            }
+            return PendingIntent.getActivity(
+                context,
+                0,
+                openIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+        }
 
         // Stub preview — same channel/icon/layout as the real worker, but skips the
         // agent so the user can verify visuals + permissions without burning quota.
@@ -89,16 +109,6 @@ class MorningAgentWorker(
             val title = context.getString(R.string.notification_title, 3)
             val body  = context.getString(R.string.notification_sample_body)
 
-            val openIntent = Intent(context, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            }
-            val pi = PendingIntent.getActivity(
-                context,
-                0,
-                openIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-            )
-
             val notification = NotificationCompat.Builder(context, CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_orb_splash)
                 .setContentTitle(title)
@@ -106,7 +116,7 @@ class MorningAgentWorker(
                 .setStyle(NotificationCompat.BigTextStyle().bigText(body))
                 .setPriority(NotificationCompat.PRIORITY_DEFAULT)
                 .setAutoCancel(true)
-                .setContentIntent(pi)
+                .setContentIntent(buildOpenAppPendingIntent(context))
                 .build()
 
             NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, notification)
@@ -137,16 +147,6 @@ class MorningAgentWorker(
             )
             val body = briefing.summary.lineSequence().firstOrNull()?.trim().orEmpty()
 
-            val openIntent = Intent(context, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            }
-            val pi = PendingIntent.getActivity(
-                context,
-                0,
-                openIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-            )
-
             val notification = NotificationCompat.Builder(context, CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_orb_splash)
                 .setContentTitle(title)
@@ -154,7 +154,7 @@ class MorningAgentWorker(
                 .setStyle(NotificationCompat.BigTextStyle().bigText(body))
                 .setPriority(NotificationCompat.PRIORITY_DEFAULT)
                 .setAutoCancel(true)
-                .setContentIntent(pi)
+                .setContentIntent(buildOpenAppPendingIntent(context))
                 .build()
 
             NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, notification)
