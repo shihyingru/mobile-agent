@@ -67,7 +67,8 @@ fun HomeScreen(
     HomeScreenContent(
         uiState              = vm.uiState,
         selectedModelId      = vm.selectedModelId,
-        isGeminiConfigured   = vm.isGeminiConfigured,
+        modelOptions         = vm.modelOptions,
+        isProviderConfigured = vm.isProviderConfigured,
         nextRunLabel         = vm.nextRunLabel,
         greetingRes          = vm.greetingRes,
         headerSubtitle       = vm.headerSubtitle,
@@ -82,7 +83,8 @@ fun HomeScreen(
 private fun HomeScreenContent(
     uiState: HomeUiState,
     selectedModelId: String,
-    isGeminiConfigured: Boolean,
+    modelOptions: List<com.luna.morningagent.ui.home.components.ModelChoice>,
+    isProviderConfigured: Boolean,
     nextRunLabel: String?,
     @androidx.annotation.StringRes greetingRes: Int,
     headerSubtitle: String,
@@ -161,10 +163,11 @@ private fun HomeScreenContent(
             Spacer(modifier = Modifier.height(28.dp))
         }
 
-        // Model picker: hidden until the user saves a Gemini key in Settings.
-        if (isGeminiConfigured) {
+        // Model picker: hidden until the active provider's key is saved.
+        if (isProviderConfigured) {
             item {
                 ModelPicker(
+                    options  = modelOptions,
                     selected = selectedModelId,
                     onSelect = onSelectModel,
                 )
@@ -393,7 +396,12 @@ private fun HomeSuccessPreview() {
         HomeScreenContent(
             uiState              = HomeUiState.Success(PreviewData.sampleBriefing),
             selectedModelId      = "gemini-2.5-flash",
-            isGeminiConfigured   = true,
+            modelOptions         = listOf(
+                com.luna.morningagent.ui.home.components.ModelChoice("gemini-2.5-flash-lite", "Flash-Lite", "Fastest · most free quota"),
+                com.luna.morningagent.ui.home.components.ModelChoice("gemini-2.5-flash",      "Flash",      "Default · solid free quota"),
+                com.luna.morningagent.ui.home.components.ModelChoice("gemini-2.5-pro",        "Pro",        "Smartest · tight free quota"),
+            ),
+            isProviderConfigured = true,
             nextRunLabel         = "tomorrow 9:00 AM",
             greetingRes          = R.string.greeting_morning,
             headerSubtitle       = "Tuesday · April 28",
@@ -411,7 +419,12 @@ private fun HomeLoadingPreview() {
         HomeScreenContent(
             uiState              = HomeUiState.Loading(),
             selectedModelId      = "gemini-2.5-flash",
-            isGeminiConfigured   = true,
+            modelOptions         = listOf(
+                com.luna.morningagent.ui.home.components.ModelChoice("gemini-2.5-flash-lite", "Flash-Lite", "Fastest · most free quota"),
+                com.luna.morningagent.ui.home.components.ModelChoice("gemini-2.5-flash",      "Flash",      "Default · solid free quota"),
+                com.luna.morningagent.ui.home.components.ModelChoice("gemini-2.5-pro",        "Pro",        "Smartest · tight free quota"),
+            ),
+            isProviderConfigured = true,
             nextRunLabel         = "tomorrow 9:00 AM",
             greetingRes          = R.string.greeting_morning,
             headerSubtitle       = "Tuesday · April 28",
@@ -429,7 +442,12 @@ private fun HomeEmptyPreview() {
         HomeScreenContent(
             uiState              = HomeUiState.Empty,
             selectedModelId      = "gemini-2.5-flash",
-            isGeminiConfigured   = true,
+            modelOptions         = listOf(
+                com.luna.morningagent.ui.home.components.ModelChoice("gemini-2.5-flash-lite", "Flash-Lite", "Fastest · most free quota"),
+                com.luna.morningagent.ui.home.components.ModelChoice("gemini-2.5-flash",      "Flash",      "Default · solid free quota"),
+                com.luna.morningagent.ui.home.components.ModelChoice("gemini-2.5-pro",        "Pro",        "Smartest · tight free quota"),
+            ),
+            isProviderConfigured = true,
             nextRunLabel         = "tomorrow 9:00 AM",
             greetingRes          = R.string.greeting_morning,
             headerSubtitle       = "Tuesday · April 28",
@@ -447,7 +465,12 @@ private fun HomeErrorPreview() {
         HomeScreenContent(
             uiState              = HomeUiState.Error("Couldn't reach Notion. Check your token in Settings."),
             selectedModelId      = "gemini-2.5-flash",
-            isGeminiConfigured   = true,
+            modelOptions         = listOf(
+                com.luna.morningagent.ui.home.components.ModelChoice("gemini-2.5-flash-lite", "Flash-Lite", "Fastest · most free quota"),
+                com.luna.morningagent.ui.home.components.ModelChoice("gemini-2.5-flash",      "Flash",      "Default · solid free quota"),
+                com.luna.morningagent.ui.home.components.ModelChoice("gemini-2.5-pro",        "Pro",        "Smartest · tight free quota"),
+            ),
+            isProviderConfigured = true,
             nextRunLabel         = "tomorrow 9:00 AM",
             greetingRes          = R.string.greeting_morning,
             headerSubtitle       = "Tuesday · April 28",

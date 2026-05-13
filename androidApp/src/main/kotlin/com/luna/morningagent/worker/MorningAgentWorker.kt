@@ -16,7 +16,10 @@ import androidx.work.WorkerParameters
 import com.luna.morningagent.MainActivity
 import com.luna.morningagent.R
 import com.luna.morningagent.data.AgentRepository
+import com.luna.morningagent.data.agent.BriefingGenerator
+import com.luna.morningagent.data.agent.ClaudeBriefingClient
 import com.luna.morningagent.data.agent.GeminiBriefingClient
+import com.luna.morningagent.data.agent.ProviderOption
 import com.luna.morningagent.data.model.Briefing
 import com.luna.morningagent.data.notion.NotionRestClient
 import com.luna.morningagent.data.secure.TokenStore
@@ -39,9 +42,12 @@ class MorningAgentWorker(
 
     override suspend fun doWork(): Result {
         val store = TokenStore(applicationContext)
+        val provider = ProviderOption.fromId(store.getSelectedProvider())
         // Skip silently when the user hasn't finished onboarding — better than
-        // posting an error notification before they've saved their keys.
-        if (store.getGeminiKey().isNullOrEmpty() ||
+        // posting an error notification before they've saved their keys. We
+        // check only the active provider's key; the other provider's key
+        // staying empty doesn't block today's run.
+        if (providerKey(store, provider).isNullOrEmpty() ||
             store.getNotionToken().isNullOrEmpty() ||
             store.getNotionDatabaseId().isNullOrEmpty()
         ) {
@@ -51,7 +57,7 @@ class MorningAgentWorker(
 
         val repo = AgentRepository(
             notionTaskSource  = NotionRestClient(store),
-            briefingGenerator = GeminiBriefingClient(store),
+            briefingGenerator = buildBriefingGenerator(store, provider),
             tokenStore        = store,
         )
 
@@ -77,6 +83,21 @@ class MorningAgentWorker(
     companion object {
         const val UNIQUE_WORK_NAME = "morning_agent_daily"
         const val CHANNEL_ID = "morning_briefing"
+
+        private fun providerKey(store: TokenStore, provider: ProviderOption): String? =
+            when (provider) {
+                ProviderOption.Gemini -> store.getGeminiKey()
+                ProviderOption.Claude -> store.getClaudeKey()
+            }
+
+        private fun buildBriefingGenerator(
+            store: TokenStore,
+            provider: ProviderOption,
+        ): BriefingGenerator = when (provider) {
+            ProviderOption.Gemini -> GeminiBriefingClient(store)
+            ProviderOption.Claude -> ClaudeBriefingClient(store)
+        }
+
         // Intent extra set by the notification's PendingIntent. MainActivity reads it
         // on cold launch and via onNewIntent so the app jumps straight to Home —
         // tapping a "your briefing is ready" notification shouldn't dump the user on

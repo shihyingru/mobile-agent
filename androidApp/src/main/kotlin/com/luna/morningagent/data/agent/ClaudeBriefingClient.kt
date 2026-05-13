@@ -1,20 +1,18 @@
 package com.luna.morningagent.data.agent
 
-import ai.koog.prompt.executor.llms.all.simpleGoogleAIExecutor
+import ai.koog.prompt.executor.llms.all.simpleAnthropicExecutor
 import ai.koog.prompt.message.Message
 import com.luna.morningagent.data.model.Task
 import com.luna.morningagent.data.secure.TokenStore
 
-// Koog-based implementation of BriefingGenerator for Google Gemini.
+// Koog-based implementation of BriefingGenerator for Anthropic Claude. Mirrors
+// GeminiBriefingClient one-for-one — same prompt, same retry/backoff policy,
+// same JSON shape, different executor + model registry. The shared helpers
+// in BriefingPrompt.kt keep the two clients from drifting.
 //
-// One-shot prompt: the agent receives the already-fetched Notion tasks and returns
-// a single JSON object with a summary + per-task tips. We deliberately don't give
-// Gemini Notion as a tool — adding tool-calling latency and failure modes for a
-// daily briefing isn't worth it. The interface keeps this swappable.
-//
-// Uses the lower-level executor.execute() (not AIAgent.run) so we can read token
-// counts off Message.Assistant.metaInfo.
-class GeminiBriefingClient(
+// Anthropic's token usage lives in the same Message.Assistant.metaInfo slot,
+// so the BriefingCard footer renders identically across providers.
+class ClaudeBriefingClient(
     private val tokenStore: TokenStore,
 ) : BriefingGenerator {
 
@@ -22,12 +20,10 @@ class GeminiBriefingClient(
         tasks: List<Task>,
         onAttempt: (Int, Int) -> Unit,
     ): BriefingDraft {
-        val apiKey = tokenStore.getGeminiKey()
-            ?: throw GeminiKeyMissingException("Gemini API key not set in Settings")
+        val apiKey = tokenStore.getClaudeKey()
+            ?: throw ClaudeKeyMissingException("Claude API key not set in Settings")
 
-        // Resolved fresh on each call so today's pick from the Home picker takes
-        // effect on the next Run Now without restarting the app.
-        val option = GeminiModelOption.fromId(tokenStore.getGeminiModel())
+        val option = ClaudeModelOption.fromId(tokenStore.getClaudeModel())
 
         if (tasks.isEmpty()) {
             return BriefingDraft(
@@ -38,13 +34,13 @@ class GeminiBriefingClient(
             )
         }
 
-        val executor = simpleGoogleAIExecutor(apiKey)
+        val executor = simpleAnthropicExecutor(apiKey)
         val responses = runBriefingWithRetry(onAttempt) {
             executor.execute(prompt = buildBriefingPrompt(tasks), model = option.koogModel)
         }
 
         val assistant = responses.filterIsInstance<Message.Assistant>().firstOrNull()
-            ?: error("Gemini returned no assistant response")
+            ?: error("Claude returned no assistant response")
         val parsed = parseBriefingResponse(assistant.content)
 
         return BriefingDraft(
@@ -55,3 +51,5 @@ class GeminiBriefingClient(
         )
     }
 }
+
+class ClaudeKeyMissingException(message: String) : IllegalStateException(message)
