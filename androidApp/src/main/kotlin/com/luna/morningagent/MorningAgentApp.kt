@@ -6,6 +6,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -18,8 +19,21 @@ import com.luna.morningagent.ui.theme.MorningAgentTheme
 private enum class Screen { Launch, Home, Settings }
 
 @Composable
-fun MorningAgentApp() {
-    var screen by remember { mutableStateOf(Screen.Launch) }
+fun MorningAgentApp(notificationTick: Int = 0) {
+    // Skip the Launch screen entirely when the activity was opened from a
+    // briefing notification — landing on Launch would force Luna to wait
+    // through an orb animation just to read the thing she was already
+    // looking at in the shade.
+    var screen by remember {
+        mutableStateOf(if (notificationTick > 0) Screen.Home else Screen.Launch)
+    }
+
+    // onNewIntent: notification tapped while the activity is already running
+    // (possibly on Settings). Each tap increments the tick; we react by
+    // snapping back to Home, since the notification means "show me my briefing."
+    LaunchedEffect(notificationTick) {
+        if (notificationTick > 0) screen = Screen.Home
+    }
 
     MorningAgentTheme {
         AnimatedContent(

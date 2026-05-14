@@ -2,9 +2,9 @@ package com.luna.morningagent.worker
 
 import android.content.Context
 import androidx.work.Constraints
-import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
-import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import com.luna.morningagent.data.secure.TokenStore
 import java.time.Duration
@@ -13,35 +13,51 @@ import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.util.concurrent.TimeUnit
 
-// Schedules / cancels the daily briefing PeriodicWorkRequest.
+// Schedules / cancels the daily briefing.
 //
-// - MainActivity calls ensure() on launch: KEEP-policy enqueue, so we don't reset
-//   the next firing window every cold start.
-// - Settings calls replace() when the user changes the time or toggles on: UPDATE
-//   policy so the new initialDelay takes effect immediately.
+// We use OneTimeWorkRequest, not PeriodicWorkRequest, so the schedule stays
+// anchored to wall-clock time. PeriodicWorkRequest measures its next fire from
+// the previous fire's start in elapsed real-time — under Doze or device-off the
+// schedule drifts. With OneTimeWorkRequest, the worker re-enqueues itself for
+// the next wall-clock target on each completion, so a late run today still
+// fires at exactly the picked time tomorrow.
+//
+// - MainActivity calls ensure() on launch: KEEP policy, so we don't reset the
+//   next firing window every cold start.
+// - Settings calls replace() when the user toggles on or changes the time:
+//   REPLACE so the new initialDelay takes effect immediately.
+// - The worker itself calls scheduleNext() after each fire.
 object BriefingScheduler {
 
-    // Called from app startup. KEEP policy → no-op if already scheduled.
     fun ensure(context: Context) {
         val store = TokenStore(context)
-        enqueue(context, store, ExistingPeriodicWorkPolicy.KEEP)
+        if (!store.getDailyBriefingEnabled()) return
+        enqueue(context, store, ExistingWorkPolicy.KEEP)
     }
 
-    // Called when the user toggles on or changes the time in Settings. UPDATE
-    // policy applies the new initialDelay without losing the unique work slot.
     fun replace(context: Context) {
         val store = TokenStore(context)
-        enqueue(context, store, ExistingPeriodicWorkPolicy.UPDATE)
+        enqueue(context, store, ExistingWorkPolicy.REPLACE)
     }
 
     fun disable(context: Context) {
         WorkManager.getInstance(context).cancelUniqueWork(MorningAgentWorker.UNIQUE_WORK_NAME)
     }
 
+    // Called from inside MorningAgentWorker.doWork() after the briefing completes,
+    // succeeds-but-skipped, or hits a terminal failure. Always re-anchors to the
+    // next wall-clock occurrence rather than +24h from "now", so a deferred run
+    // doesn't bleed into the picked slot.
+    fun scheduleNext(context: Context) {
+        val store = TokenStore(context)
+        if (!store.getDailyBriefingEnabled()) return
+        enqueue(context, store, ExistingWorkPolicy.REPLACE)
+    }
+
     private fun enqueue(
         context: Context,
         store: TokenStore,
-        policy: ExistingPeriodicWorkPolicy,
+        policy: ExistingWorkPolicy,
     ) {
         val target = LocalTime.of(store.getDailyBriefingHour(), store.getDailyBriefingMinute())
         val initialDelayMillis = computeInitialDelayMillis(
@@ -53,16 +69,13 @@ object BriefingScheduler {
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
 
-        val request = PeriodicWorkRequestBuilder<MorningAgentWorker>(
-            repeatInterval         = 1,
-            repeatIntervalTimeUnit = TimeUnit.DAYS,
-        )
+        val request = OneTimeWorkRequestBuilder<MorningAgentWorker>()
             .setInitialDelay(initialDelayMillis, TimeUnit.MILLISECONDS)
             .setConstraints(constraints)
             .addTag(WORK_TAG)
             .build()
 
-        WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+        WorkManager.getInstance(context).enqueueUniqueWork(
             MorningAgentWorker.UNIQUE_WORK_NAME,
             policy,
             request,

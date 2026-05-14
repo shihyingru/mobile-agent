@@ -29,6 +29,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -59,6 +60,10 @@ fun HomeScreen(
     modifier: Modifier = Modifier,
     vm: HomeViewModel = viewModel(),
 ) {
+    // Re-sync clock labels on entry — covers the "user changed time in Settings
+    // and came back" case faster than waiting for the next 30s tick.
+    LaunchedEffect(Unit) { vm.refreshClock() }
+
     HomeScreenContent(
         uiState              = vm.uiState,
         selectedModelId      = vm.selectedModelId,
