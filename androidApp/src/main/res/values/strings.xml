@@ -81,7 +81,7 @@
     <string name="greeting_midday">Mid-morning, Luna.</string>
     <string name="sub_midday">Halfway through your sharpest hours.</string>
     <string name="runlabel_midday">Refresh briefing</string>
-    <string name="status_midday">Last run %1$s</string>
+    <string name="status_midday">Last run 09:02</string>
     <string name="quote_midday">Two of three still untouched. Close the PR before lunch — Maya is online, and a quick approval lets the next deploy go out on time.</string>
 
     <!-- Afternoon (12:00–16:59) -->
@@ -95,7 +95,7 @@
     <string name="greeting_evening_v4">Good evening, Luna.</string>
     <string name="sub_evening">Wind down. Tomorrow is set.</string>
     <string name="runlabel_evening">Confirm tomorrow</string>
-    <string name="status_evening">Set for %1$s</string>
+    <string name="status_evening">Set for 09:00</string>
     <string name="quote_evening">Tomorrow is set — three high-priority items, queued. The SDK doc has the longest tail; everything else fits around it.</string>
 
     <!-- Night (21:00–04:59) -->

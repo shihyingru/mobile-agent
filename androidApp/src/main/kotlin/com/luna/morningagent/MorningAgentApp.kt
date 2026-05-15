@@ -7,6 +7,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -15,6 +16,9 @@ import com.luna.morningagent.ui.home.HomeScreen
 import com.luna.morningagent.ui.launch.LaunchScreen
 import com.luna.morningagent.ui.settings.SettingsScreen
 import com.luna.morningagent.ui.theme.MorningAgentTheme
+import com.luna.morningagent.ui.theme.resolveTheme
+import java.time.LocalDateTime
+import kotlinx.coroutines.delay
 
 private enum class Screen { Launch, Home, Settings }
 
@@ -35,7 +39,21 @@ fun MorningAgentApp(notificationTick: Int = 0) {
         if (notificationTick > 0) screen = Screen.Home
     }
 
-    MorningAgentTheme {
+    // Tick the wall clock once a minute so resolveTheme() picks up slot
+    // transitions live (Dawn → Midday at 09:00, Midday → Afternoon at 12:00,
+    // etc.). derivedStateOf keeps the theme reference stable when the slot
+    // doesn't change, so a 60s tick that lands inside the same slot doesn't
+    // cause a global recomposition cascade.
+    var now by remember { mutableStateOf(LocalDateTime.now()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(60_000L)
+            now = LocalDateTime.now()
+        }
+    }
+    val theme by remember { derivedStateOf { resolveTheme(now) } }
+
+    MorningAgentTheme(theme = theme) {
         AnimatedContent(
             targetState  = screen,
             transitionSpec = {

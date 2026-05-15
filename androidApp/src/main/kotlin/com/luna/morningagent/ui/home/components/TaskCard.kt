@@ -2,22 +2,23 @@ package com.luna.morningagent.ui.home.components
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.OpenInNew
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -27,6 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
@@ -38,9 +40,21 @@ import com.luna.morningagent.ui.theme.MorningAgentTheme
 import com.luna.morningagent.ui.theme.MorningType
 import com.luna.morningagent.ui.theme.morning
 
+/**
+ * v4 task card — repeating list rows are the only place where card chrome
+ * still lives. 18dp radius, soft tint shadow, 16dp padding.
+ *
+ * Layout (top to bottom):
+ *   - top row: PriorityChip · spacer · estimate (mono) · separator dot · SourceLogo(16dp)
+ *   - title    (Newsreader 18sp/500)
+ *   - tip      (Newsreader italic 14sp, textSecondary)
+ *   - hairline cardEdge divider
+ *   - footer:  "Open task" (sans, accent) · chevron (accent)
+ */
 @Composable
 fun TaskCard(
     task: Task,
+    onClick: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val morning = MaterialTheme.morning
@@ -49,18 +63,24 @@ fun TaskCard(
         targetValue = if (pressed) 0.98f else 1f,
         label       = "cardScale",
     )
-    val estimatedLabel = if (task.estimatedMinutes >= 60) {
-        "${task.estimatedMinutes / 60}h"
-    } else {
-        "${task.estimatedMinutes}m"
-    }
+
+    val estimateLabel = if (task.estimatedMinutes > 0) {
+        if (task.estimatedMinutes >= 60) "${task.estimatedMinutes / 60}h" else "${task.estimatedMinutes}m"
+    } else null
 
     Column(
         modifier = modifier
             .fillMaxWidth()
             .scale(scale)
-            .clip(RoundedCornerShape(16.dp))
+            .shadow(
+                elevation    = 12.dp,
+                shape        = RoundedCornerShape(18.dp),
+                ambientColor = morning.textPrimary.copy(alpha = 0.18f),
+                spotColor    = morning.textPrimary.copy(alpha = 0.18f),
+            )
+            .clip(RoundedCornerShape(18.dp))
             .background(morning.surface)
+            .border(width = 1.dp, color = morning.cardEdge, shape = RoundedCornerShape(18.dp))
             .pointerInput(Unit) {
                 detectTapGestures(
                     onPress = {
@@ -68,85 +88,87 @@ fun TaskCard(
                         tryAwaitRelease()
                         pressed = false
                     },
+                    onTap = { onClick() },
                 )
             }
-            .padding(20.dp),
+            .padding(16.dp),
     ) {
         Row(
-            verticalAlignment     = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
             modifier              = Modifier.fillMaxWidth(),
+            verticalAlignment     = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            PriorityPill(priority = task.priority)
-            task.area?.takeIf { it.isNotBlank() }?.let { AreaTag(name = it) }
+            PriorityChip(priority = task.priority)
             Spacer(modifier = Modifier.weight(1f))
-            NotionBadge()
+            if (estimateLabel != null) {
+                Text(
+                    text  = estimateLabel,
+                    style = MorningType.Caption,
+                    color = morning.textMuted,
+                )
+                Text(
+                    text  = "·",
+                    style = MorningType.Caption,
+                    color = morning.textMuted.copy(alpha = 0.4f),
+                )
+            }
+            SourceLogo(size = 16.dp)
         }
 
         Spacer(modifier = Modifier.height(10.dp))
 
         Text(
             text  = task.title,
-            style = MorningType.Headline,
+            style = MorningType.TaskTitle,
             color = morning.textPrimary,
         )
 
-        Spacer(modifier = Modifier.height(4.dp))
-
-        Text(
-            text  = task.notionRef,
-            style = MorningType.Mono,
-            color = morning.textMuted,
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        Text(
-            text  = stringResource(R.string.label_tip),
-            style = MorningType.Label,
-            color = morning.accent,
-        )
-
-        Spacer(modifier = Modifier.height(4.dp))
+        Spacer(modifier = Modifier.height(8.dp))
 
         Text(
             text  = task.tip,
-            style = MorningType.Body,
+            style = MorningType.Tip,
             color = morning.textSecondary,
         )
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            // Hide the estimate line when the field is 0 — current Notion schema
-            // doesn't carry "Estimated Time", so most rows would otherwise read "Est. 0m".
-            if (task.estimatedMinutes > 0) {
-                Text(
-                    text  = "Est. $estimatedLabel",
-                    style = MorningType.Mono,
-                    color = morning.textSecondary,
-                )
-            }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(morning.cardEdge),
+        )
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        Row(
+            modifier              = Modifier.fillMaxWidth(),
+            verticalAlignment     = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text(
+                text  = stringResource(R.string.action_open_task),
+                style = MorningType.ButtonLabel,
+                color = morning.accent,
+            )
             Spacer(modifier = Modifier.weight(1f))
             Icon(
-                imageVector        = Icons.AutoMirrored.Rounded.OpenInNew,
+                imageVector        = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
                 contentDescription = stringResource(R.string.cd_notion_link),
-                tint               = morning.accent,
-                modifier           = Modifier.padding(end = 2.dp),
-            )
-            Text(
-                text  = stringResource(R.string.notion_link_label),
-                style = MorningType.Body,
-                color = morning.accent,
+                tint               = morning.accent.copy(alpha = 0.7f),
+                modifier           = Modifier.size(14.dp),
             )
         }
     }
 }
 
-@Preview(showBackground = true, backgroundColor = 0xFF0A0A0F)
+@Preview(showBackground = true, backgroundColor = 0xFFE5E1DD)
 @Composable
 private fun TaskCardPreview() {
     MorningAgentTheme {
-        TaskCard(task = PreviewData.sampleBriefing.tasks.first())
+        Box(modifier = Modifier.padding(18.dp)) {
+            TaskCard(task = PreviewData.sampleBriefing.tasks.first())
+        }
     }
 }
