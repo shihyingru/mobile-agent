@@ -39,7 +39,9 @@
     <string name="cd_settings">Settings</string>
     <string name="cd_notion_link">Open in Notion</string>
     <string name="settings_intro">Bring your own keys. They\'re stored encrypted on this device — they never leave your phone.</string>
+    <string name="settings_section_provider">AI PROVIDER</string>
     <string name="settings_section_credentials">CREDENTIALS</string>
+    <string name="settings_field_claude">Claude API key</string>
     <string name="settings_section_data_source">DATA SOURCE</string>
     <string name="settings_field_gemini">Gemini API key</string>
     <string name="settings_field_notion">Notion integration token</string>

@@ -4,6 +4,8 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -62,6 +64,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.luna.morningagent.R
+import com.luna.morningagent.data.agent.ProviderOption
 import com.luna.morningagent.ui.theme.MorningAgentTheme
 import com.luna.morningagent.ui.theme.MorningType
 import com.luna.morningagent.ui.theme.morning
@@ -81,7 +84,9 @@ fun SettingsScreen(
     BackHandler { handleBack() }
     SettingsScreenContent(
         uiState                = vm.uiState,
+        onProviderChange       = vm::setProvider,
         onGeminiDraftChange    = vm::updateGeminiDraft,
+        onClaudeDraftChange    = vm::updateClaudeDraft,
         onNotionDraftChange    = vm::updateNotionDraft,
         onDatabaseDraftChange  = vm::updateDatabaseDraft,
         onAutoRunChange        = vm::setAutoRun,
@@ -89,6 +94,7 @@ fun SettingsScreen(
         onBriefingTimeChange   = vm::setBriefingTime,
         onSendTestNotification = vm::sendTestNotification,
         onSave                 = vm::save,
+
         onTestNotion           = vm::testNotionConnection,
         onBack                 = handleBack,
         modifier               = modifier,
@@ -99,7 +105,9 @@ fun SettingsScreen(
 @Composable
 private fun SettingsScreenContent(
     uiState: SettingsUiState,
+    onProviderChange: (ProviderOption) -> Unit,
     onGeminiDraftChange: (String) -> Unit,
+    onClaudeDraftChange: (String) -> Unit,
     onNotionDraftChange: (String) -> Unit,
     onDatabaseDraftChange: (String) -> Unit,
     onAutoRunChange: (Boolean) -> Unit,
@@ -115,6 +123,7 @@ private fun SettingsScreenContent(
     val focusManager = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
     val canSave = uiState.geminiDraft.isNotEmpty() ||
+        uiState.claudeDraft.isNotEmpty() ||
         uiState.notionDraft.isNotEmpty() ||
         uiState.databaseDraft != uiState.savedDatabaseId
 
@@ -155,21 +164,47 @@ private fun SettingsScreenContent(
             )
 
             Text(
+                text  = stringResource(R.string.settings_section_provider),
+                style = MorningType.Label,
+                color = morning.textMuted,
+            )
+
+            ProviderRow(
+                selected = uiState.selectedProvider,
+                onSelect = onProviderChange,
+            )
+
+            Text(
                 text  = stringResource(R.string.settings_section_credentials),
                 style = MorningType.Label,
                 color = morning.textMuted,
             )
 
-            SecretField(
-                label       = stringResource(R.string.settings_field_gemini),
-                draft       = uiState.geminiDraft,
-                savedLast4  = uiState.geminiSavedLast4,
-                onChange    = onGeminiDraftChange,
-                imeAction   = ImeAction.Next,
-                keyboardActions = KeyboardActions(
-                    onNext = { focusManager.moveFocus(FocusDirection.Down) },
-                ),
-            )
+            // Conditional API-key field: shows only the active provider's key.
+            // The other provider's key stays saved silently — flipping providers
+            // doesn't wipe it.
+            when (uiState.selectedProvider) {
+                ProviderOption.Gemini -> SecretField(
+                    label       = stringResource(R.string.settings_field_gemini),
+                    draft       = uiState.geminiDraft,
+                    savedLast4  = uiState.geminiSavedLast4,
+                    onChange    = onGeminiDraftChange,
+                    imeAction   = ImeAction.Next,
+                    keyboardActions = KeyboardActions(
+                        onNext = { focusManager.moveFocus(FocusDirection.Down) },
+                    ),
+                )
+                ProviderOption.Claude -> SecretField(
+                    label       = stringResource(R.string.settings_field_claude),
+                    draft       = uiState.claudeDraft,
+                    savedLast4  = uiState.claudeSavedLast4,
+                    onChange    = onClaudeDraftChange,
+                    imeAction   = ImeAction.Next,
+                    keyboardActions = KeyboardActions(
+                        onNext = { focusManager.moveFocus(FocusDirection.Down) },
+                    ),
+                )
+            }
 
             SecretField(
                 label       = stringResource(R.string.settings_field_notion),
@@ -316,6 +351,40 @@ private fun SettingsScreenContent(
                         )
                     }
                 }
+            }
+        }
+    }
+}
+
+// Segmented two-chip row for picking the active LLM provider. Mirrors the
+// Home ModelPicker chip style for visual consistency. Persists immediately
+// via onSelect; the parent flips the visible API-key field accordingly.
+@Composable
+private fun ProviderRow(
+    selected: ProviderOption,
+    onSelect: (ProviderOption) -> Unit,
+) {
+    val morning = MaterialTheme.morning
+    Row(
+        modifier              = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        ProviderOption.entries.forEach { option ->
+            val isSelected = option == selected
+            val bg = if (isSelected) morning.accent.copy(alpha = 0.12f) else morning.surface
+            val borderColor = if (isSelected) morning.accent else morning.border
+            val labelColor = if (isSelected) morning.accent else morning.textPrimary
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .weight(1f)
+                    .height(44.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(bg)
+                    .border(width = 1.dp, color = borderColor, shape = RoundedCornerShape(12.dp))
+                    .clickable { onSelect(option) },
+            ) {
+                Text(text = option.displayName, style = MorningType.Body, color = labelColor)
             }
         }
     }
@@ -575,6 +644,8 @@ private fun SettingsEmptyPreview() {
             onGeminiDraftChange   = {},
             onNotionDraftChange   = {},
             onDatabaseDraftChange = {},
+            onProviderChange       = {},
+            onClaudeDraftChange    = {},
             onAutoRunChange        = {},
             onDailyBriefingChange  = {},
             onBriefingTimeChange   = { _, _ -> },
@@ -601,6 +672,8 @@ private fun SettingsSavedPreview() {
             onGeminiDraftChange   = {},
             onNotionDraftChange   = {},
             onDatabaseDraftChange = {},
+            onProviderChange       = {},
+            onClaudeDraftChange    = {},
             onAutoRunChange        = {},
             onDailyBriefingChange  = {},
             onBriefingTimeChange   = { _, _ -> },
@@ -624,6 +697,8 @@ private fun SettingsTypingPreview() {
             onGeminiDraftChange   = {},
             onNotionDraftChange   = {},
             onDatabaseDraftChange = {},
+            onProviderChange       = {},
+            onClaudeDraftChange    = {},
             onAutoRunChange        = {},
             onDailyBriefingChange  = {},
             onBriefingTimeChange   = { _, _ -> },

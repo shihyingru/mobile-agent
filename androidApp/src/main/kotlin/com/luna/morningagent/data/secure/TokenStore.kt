@@ -40,6 +40,20 @@ class TokenStore(context: Context) {
     fun saveGeminiModel(id: String) = prefs.edit().putString(KEY_GEMINI_MODEL, id).apply()
     fun getGeminiModel(): String = prefs.getString(KEY_GEMINI_MODEL, null) ?: DEFAULT_GEMINI_MODEL
 
+    // Anthropic Claude side — runs in parallel to the Gemini fields above. Each
+    // provider's key + model preference is independent so the user can flip
+    // providers in Settings without re-entering keys or losing model picks.
+    fun saveClaudeKey(key: String) = prefs.edit().putString(KEY_CLAUDE, key).apply()
+    fun getClaudeKey(): String? = prefs.getString(KEY_CLAUDE, null)
+
+    fun saveClaudeModel(id: String) = prefs.edit().putString(KEY_CLAUDE_MODEL, id).apply()
+    fun getClaudeModel(): String = prefs.getString(KEY_CLAUDE_MODEL, null) ?: DEFAULT_CLAUDE_MODEL
+
+    // Which provider the agent layer talks to. Defaults to Gemini for users who
+    // had Gemini-only configs before Claude support landed.
+    fun saveSelectedProvider(id: String) = prefs.edit().putString(KEY_PROVIDER, id).apply()
+    fun getSelectedProvider(): String = prefs.getString(KEY_PROVIDER, null) ?: DEFAULT_PROVIDER
+
     // Daily WorkManager schedule. When true, MainActivity enqueues the
     // PeriodicWorkRequest on launch; toggling off cancels the unique work.
     fun saveDailyBriefingEnabled(enabled: Boolean) =
@@ -73,7 +87,12 @@ class TokenStore(context: Context) {
         private const val KEY_BRIEFING_HOUR = "daily_briefing_hour"
         private const val KEY_BRIEFING_MINUTE = "daily_briefing_minute"
         private const val KEY_LAST_BRIEFING = "last_briefing_json"
+        private const val KEY_CLAUDE = "claude_api_key"
+        private const val KEY_CLAUDE_MODEL = "claude_model_id"
+        private const val KEY_PROVIDER = "selected_provider"
         private const val DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
+        private const val DEFAULT_CLAUDE_MODEL = "claude-sonnet-4-6"
+        private const val DEFAULT_PROVIDER = "gemini"
         private const val DEFAULT_HOUR = 9
         private const val DEFAULT_MINUTE = 0
     }

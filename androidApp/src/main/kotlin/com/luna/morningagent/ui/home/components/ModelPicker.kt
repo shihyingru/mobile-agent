@@ -22,13 +22,23 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.luna.morningagent.R
-import com.luna.morningagent.data.agent.GeminiModelOption
 import com.luna.morningagent.ui.theme.MorningAgentTheme
 import com.luna.morningagent.ui.theme.MorningType
 import com.luna.morningagent.ui.theme.morning
 
+// Provider-agnostic option shape. HomeViewModel maps the active provider's enum
+// (GeminiModelOption / ClaudeModelOption) into this so the picker doesn't have
+// to know which provider is in use. Adding a third provider only requires a
+// new mapping at the ViewModel boundary, not a picker change.
+data class ModelChoice(
+    val id: String,
+    val displayName: String,
+    val tagline: String,
+)
+
 @Composable
 fun ModelPicker(
+    options: List<ModelChoice>,
     selected: String,
     onSelect: (String) -> Unit,
     modifier: Modifier = Modifier,
@@ -42,7 +52,7 @@ fun ModelPicker(
                 .horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            GeminiModelOption.entries.forEach { option ->
+            options.forEach { option ->
                 ModelChip(
                     label    = option.displayName,
                     tagline  = option.tagline,
@@ -91,6 +101,11 @@ private fun ModelChip(
 private fun ModelPickerPreview() {
     MorningAgentTheme {
         ModelPicker(
+            options = listOf(
+                ModelChoice("gemini-2.5-flash-lite", "Flash-Lite", "Fastest · most free quota"),
+                ModelChoice("gemini-2.5-flash",      "Flash",      "Default · solid free quota"),
+                ModelChoice("gemini-2.5-pro",        "Pro",        "Smartest · tight free quota"),
+            ),
             selected = "gemini-2.5-flash",
             onSelect = {},
             modifier = Modifier.padding(24.dp),
