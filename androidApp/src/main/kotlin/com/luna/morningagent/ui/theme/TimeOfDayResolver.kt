@@ -1,36 +1,35 @@
 package com.luna.morningagent.ui.theme
 
-import java.time.DayOfWeek
 import java.time.LocalDateTime
 
 /**
- * Single source of truth for time-of-day bucketing. Weekend wins over hour-of-day;
- * 22:00–04:59 folds into evening so late-night doesn't trip the morning bucket.
+ * Resolves the active TimeSlot from a wall-clock LocalDateTime.
  *
- * `HomeViewModel.greetingResFor` delegates here so theme + greeting always agree.
+ * Slot ranges (mirrors design/themes.jsx SLOTS):
+ *   - Dawn      05:00 – 08:59
+ *   - Midday    09:00 – 11:59
+ *   - Afternoon 12:00 – 16:59
+ *   - Evening   17:00 – 20:59
+ *   - Night     21:00 – 04:59 (wraps midnight)
+ *
+ * No weekend special-case — the v4 design treats weekends as just-another-day
+ * and keeps the daily ritual constant.
  */
-fun resolveTimeOfDay(now: LocalDateTime): TimeOfDay {
-    val weekend = now.dayOfWeek == DayOfWeek.SATURDAY || now.dayOfWeek == DayOfWeek.SUNDAY
-    if (weekend) return TimeOfDay.Weekend
-    return when (now.hour) {
-        in 5..11  -> TimeOfDay.Morning
-        in 12..17 -> TimeOfDay.Afternoon
-        else      -> TimeOfDay.Evening
-    }
+fun resolveSlot(now: LocalDateTime): TimeSlot = when (now.hour) {
+    in 5..8   -> TimeSlot.Dawn
+    in 9..11  -> TimeSlot.Midday
+    in 12..16 -> TimeSlot.Afternoon
+    in 17..20 -> TimeSlot.Evening
+    else      -> TimeSlot.Night
 }
 
 /**
- * Time-of-day → live MorningTheme. Light palette during daylight (Morning,
- * Afternoon, and weekend daytime), Dark in the evening. Weekend evening hours
- * still get the Dark palette so the app physically dawns and dusks with Luna's
- * day instead of staying bright at 11pm on a Saturday.
+ * Slot → live MorningTheme. Daytime slots (Dawn/Midday/Afternoon) get the
+ * Light palette; Evening + Night get Dark — so the app physically dawns and
+ * dusks with Luna's day.
  */
 fun resolveTheme(now: LocalDateTime): MorningTheme {
-    val timeOfDay = resolveTimeOfDay(now)
-    val daytimeHour = now.hour in 5..17
-    return if (daytimeHour) {
-        MorningThemes.light(timeOfDay)
-    } else {
-        MorningThemes.dark(timeOfDay)
-    }
+    val slot = resolveSlot(now)
+    val isDaytime = slot == TimeSlot.Dawn || slot == TimeSlot.Midday || slot == TimeSlot.Afternoon
+    return if (isDaytime) MorningThemes.light(slot) else MorningThemes.dark(slot)
 }

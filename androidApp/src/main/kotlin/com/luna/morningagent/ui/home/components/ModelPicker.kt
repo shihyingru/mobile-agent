@@ -73,7 +73,7 @@ private fun ModelChip(
 ) {
     val morning = MaterialTheme.morning
     val bg = if (selected) morning.accent.copy(alpha = 0.12f) else morning.surface
-    val borderColor = if (selected) morning.accent else morning.border
+    val borderColor = if (selected) morning.accent else morning.cardEdge
     val labelColor = if (selected) morning.accent else morning.textPrimary
     Column(
         modifier = Modifier

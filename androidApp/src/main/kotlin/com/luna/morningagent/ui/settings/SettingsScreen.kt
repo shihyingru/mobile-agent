@@ -372,7 +372,7 @@ private fun ProviderRow(
         ProviderOption.entries.forEach { option ->
             val isSelected = option == selected
             val bg = if (isSelected) morning.accent.copy(alpha = 0.12f) else morning.surface
-            val borderColor = if (isSelected) morning.accent else morning.border
+            val borderColor = if (isSelected) morning.accent else morning.cardEdge
             val labelColor = if (isSelected) morning.accent else morning.textPrimary
             Box(
                 contentAlignment = Alignment.Center,
@@ -441,7 +441,7 @@ private fun SettingsToggleRow(
                 checkedTrackColor    = morning.accent,
                 uncheckedThumbColor  = morning.textMuted,
                 uncheckedTrackColor  = morning.surface,
-                uncheckedBorderColor = morning.border,
+                uncheckedBorderColor = morning.cardEdge,
             ),
         )
     }
@@ -502,7 +502,7 @@ private fun BriefingTimeRow(
                             clockDialColor             = morning.background,
                             selectorColor              = morning.accent,
                             containerColor             = morning.surface,
-                            periodSelectorBorderColor  = morning.border,
+                            periodSelectorBorderColor  = morning.cardEdge,
                             clockDialSelectedContentColor   = morning.surface,
                             clockDialUnselectedContentColor = morning.textPrimary,
                             periodSelectorSelectedContainerColor   = morning.accent,
@@ -587,7 +587,7 @@ private fun SecretField(
             focusedTextColor        = morning.textPrimary,
             unfocusedTextColor      = morning.textPrimary,
             focusedBorderColor      = morning.accent,
-            unfocusedBorderColor    = morning.border,
+            unfocusedBorderColor    = morning.cardEdge,
             focusedLabelColor       = morning.accent,
             unfocusedLabelColor     = morning.textSecondary,
             cursorColor             = morning.accent,
@@ -624,7 +624,7 @@ private fun PlainField(
             focusedTextColor        = morning.textPrimary,
             unfocusedTextColor      = morning.textPrimary,
             focusedBorderColor      = morning.accent,
-            unfocusedBorderColor    = morning.border,
+            unfocusedBorderColor    = morning.cardEdge,
             focusedLabelColor       = morning.accent,
             unfocusedLabelColor     = morning.textSecondary,
             cursorColor             = morning.accent,

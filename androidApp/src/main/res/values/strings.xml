@@ -67,4 +67,50 @@
     <string name="notification_sample_body">Sample briefing — start with the deepest task before email tries to steal your morning.</string>
     <string name="settings_button_test_notification">Send test notification</string>
     <string name="cd_back">Back</string>
+
+    <!-- v4 — per-slot copy. 5 slots × 5 fields. Mirrors design/themes.jsx SLOTS verbatim. -->
+
+    <!-- Dawn (05:00–08:59) -->
+    <string name="greeting_dawn">Good morning, Luna.</string>
+    <string name="sub_dawn">Fresh start. Three things matter today.</string>
+    <string name="runlabel_dawn">Begin the day</string>
+    <string name="status_dawn">Briefing ready</string>
+    <string name="quote_dawn">Pick one win this morning, then build momentum. Start with the SDK doc — your mind is sharpest now, and it unblocks two downstream tasks.</string>
+
+    <!-- Midday (09:00–11:59) -->
+    <string name="greeting_midday">Mid-morning, Luna.</string>
+    <string name="sub_midday">Halfway through your sharpest hours.</string>
+    <string name="runlabel_midday">Refresh briefing</string>
+    <string name="status_midday">Last run %1$s</string>
+    <string name="quote_midday">Two of three still untouched. Close the PR before lunch — Maya is online, and a quick approval lets the next deploy go out on time.</string>
+
+    <!-- Afternoon (12:00–16:59) -->
+    <string name="greeting_afternoon_v4">Good afternoon, Luna.</string>
+    <string name="sub_afternoon">Tidy the loose threads before dusk.</string>
+    <string name="runlabel_afternoon">Refresh briefing</string>
+    <string name="status_afternoon">Resting</string>
+    <string name="quote_afternoon">Don\'t start anything new. Close the PR review and the design replies — both are quick, and you\'ll feel lighter by four.</string>
+
+    <!-- Evening (17:00–20:59) -->
+    <string name="greeting_evening_v4">Good evening, Luna.</string>
+    <string name="sub_evening">Wind down. Tomorrow is set.</string>
+    <string name="runlabel_evening">Confirm tomorrow</string>
+    <string name="status_evening">Set for %1$s</string>
+    <string name="quote_evening">Tomorrow is set — three high-priority items, queued. The SDK doc has the longest tail; everything else fits around it.</string>
+
+    <!-- Night (21:00–04:59) -->
+    <string name="greeting_night">It\'s late, Luna.</string>
+    <string name="sub_night">Sleep on it. The agent has tomorrow.</string>
+    <string name="runlabel_night">Plan tomorrow</string>
+    <string name="status_night">Quiet hours</string>
+    <string name="quote_night">Put it down. You closed six of nine today, including the auth refactor. The doc can wait one more sleep.</string>
+
+    <!-- v4 — new section + UI labels. -->
+    <string name="section_briefing">BRIEFING</string>
+    <string name="section_today">Today</string>
+    <string name="label_n_items">%1$d ITEMS</string>
+    <string name="footer_powered_by_v4">Powered by Gemini · Notion MCP</string>
+    <string name="label_next_run">Next run</string>
+    <string name="action_open_task">Open task</string>
+    <string name="wordmark_agent">Agent</string>
 </resources>

@@ -21,11 +21,11 @@ fun MorningAgentTheme(
             surface          = palette.surface,
             surfaceVariant   = palette.surfaceRaised,
             error            = palette.error,
-            onPrimary        = palette.accentOnButton,
+            onPrimary        = palette.onAccent,
             onBackground     = palette.textPrimary,
             onSurface        = palette.textPrimary,
             onSurfaceVariant = palette.textSecondary,
-            outline          = palette.border,
+            outline          = palette.cardEdge,
         )
     } else {
         darkColorScheme(
@@ -34,11 +34,11 @@ fun MorningAgentTheme(
             surface          = palette.surface,
             surfaceVariant   = palette.surfaceRaised,
             error            = palette.error,
-            onPrimary        = palette.accentOnButton,
+            onPrimary        = palette.onAccent,
             onBackground     = palette.textPrimary,
             onSurface        = palette.textPrimary,
             onSurfaceVariant = palette.textSecondary,
-            outline          = palette.border,
+            outline          = palette.cardEdge,
         )
     }
 

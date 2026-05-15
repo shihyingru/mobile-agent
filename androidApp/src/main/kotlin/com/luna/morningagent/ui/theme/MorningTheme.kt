@@ -1,180 +1,136 @@
 package com.luna.morningagent.ui.theme
 
-import androidx.annotation.StringRes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
-import com.luna.morningagent.R
 
 // SOHO Waterworks palette: Sand · Navy · Teal · Aqua · Gold.
-//   - Sand   #E5E1DD : page bg (light) / ink (dark)
-//   - Navy   #083A4F : ink (light) / page bg (dark, deepened to #04222F)
-//   - Teal   #407E8C : accent (light)
-//   - Aqua   #C0D5D6 : accent (dark)
-//   - Gold   #A58D66 : medium-priority chip (warmed to #C8B083 on dark)
+// Two themes — Light (Sand bg, Navy ink, Teal accent) and Dark (deepened Navy
+// bg, Sand text, Aqua accent). Time-of-day picks ONE of five slots
+// (Dawn / Midday / Afternoon / Evening / Night) which drives copy + button
+// state and biases toward Light or Dark via TimeOfDayResolver.
 //
-// Time-of-day still buckets greeting copy (Morning / Afternoon / Evening /
-// Weekend), but only LIGHT vs DARK reach the palette. See TimeOfDayResolver.
+// Per-slot copy lives in strings.xml (greeting_*, sub_*, runlabel_*,
+// status_*, quote_*) and is resolved by SlotCopy.kt. The palette holds
+// only color tokens; no string IDs.
 
-enum class TimeOfDay { Morning, Afternoon, Evening, Weekend }
+/** Five time slots driving greeting + run-button copy + status state. */
+enum class TimeSlot { Dawn, Midday, Afternoon, Evening, Night }
 
-/** Three colour stops for the header logo-mark radial gradient. */
+/** Status-dot semantic state — picks dot color in StatusRow. */
+enum class StatusDot { Live, Idle, Scheduled, Sleeping }
+
+/** Run-button leading icon — picked per slot. */
+enum class RunIcon { Sunrise, Refresh, Check, Moon }
+
+/** Three colour stops for the launch BreathingOrb (kept from v3 wiring). */
 data class LogoMark(val c1: Color, val c2: Color, val c3: Color)
 
-/** Full per-theme colour token bundle. */
+/** Full per-theme color tokens. Names mirror design/Color Palette.md. */
 data class MorningPalette(
-    val background: Color,    // page (Sand / deepened Navy)
-    val surface: Color,       // card / input
-    val surfaceRaised: Color, // briefing card (one tone above surface)
-    val border: Color,        // hairlines (cardEdge)
-    val textPrimary: Color,   // ink
+    // page
+    val background:    Color, // bg
+    val backgroundWash: Color, // bgWash — top radial wash for paper depth
+    // surfaces
+    val surface:       Color, // card
+    val surfaceRaised: Color, // card raised (briefing block etc)
+    val cardEdge:      Color, // hairline divider + card border
+    // text
+    val textPrimary:   Color, // ink
     val textSecondary: Color, // inkSoft
-    val textMuted: Color,     // inkMute
-    val accent: Color,        // primary accent (Teal / Aqua)
-    val accentDeep: Color,    // hover / pressed accent
-    val accentOnButton: Color,// onAccent label color
-    val accentGlow: Color,    // accentSoft — chip bg, focus wash
-    val statusGlow: Color,    // halo behind status dot
-    val logoMark: LogoMark,   // header dot / orb gradient
-    val priorityHigh: Color,  // = accent
-    val priorityMid: Color,   // = gold
-    val priorityLow: Color,   // = inkMute
-    val success: Color,       // "Active" / "Saved" green
-    val gold: Color,          // exposed for the bronze CTA + medium chips
-    val error: Color,
-    val isLight: Boolean,
-)
-
-/** Per-theme copy variants — values are string-resource IDs so localisation still works. */
-data class MorningCopy(
-    @StringRes val greeting: Int,
-    @StringRes val statusLabel: Int,
-    @StringRes val runButton: Int,
-    @StringRes val briefingSection: Int,
-    @StringRes val tasksSection: Int,
-)
-
-data class MorningTheme(
-    val timeOfDay: TimeOfDay,
-    val palette: MorningPalette,
-    val copy: MorningCopy,
+    val textMuted:     Color, // inkMute
+    // accent + on-accent
+    val accent:        Color, // primary accent (Teal / Aqua)
+    val accentDeep:    Color, // pressed / hover / orb deep stop
+    val accentSoft:    Color, // 12–14% accent — chip bg, focus wash, model row bg
+    val onAccent:      Color, // text/icon on accent surfaces
+    val accentGlow:    Color, // alias for accentSoft (legacy callers)
+    val statusGlow:    Color, // halo behind status dot when present
+    // semantic / chip palette
+    val priorityHigh:  Color, // = accent
+    val priorityMid:   Color, // = gold
+    val priorityLow:   Color, // = inkMute
+    val gold:          Color, // exposed for medium-priority chip + idle status dot
+    val success:       Color, // "Active" / "Saved" green
+    val error:         Color,
+    // brand
+    val logoMark:      LogoMark,
+    val isLight:       Boolean,
 )
 
 object MorningThemes {
 
-    // --- SOHO Waterworks: Light ---------------------------------------------
+    // --- Light · Sand · Navy · Teal --------------------------------------
     private val LightPalette = MorningPalette(
-        background     = Color(0xFFE5E1DD), // Sand
-        surface        = Color(0xFFF6F3EF), // card
-        surfaceRaised  = Color(0xFFFBF9F5), // card raised
-        border         = Color(0x14083A4F), // navy @ 8% — cardEdge
-        textPrimary    = Color(0xFF083A4F), // Navy ink
-        textSecondary  = Color(0xFF3F6273), // inkSoft
-        textMuted      = Color(0xFF8A95A0), // inkMute
-        accent         = Color(0xFF407E8C), // Teal
+        background     = Color(0xFFE5E1DD),  // SAND
+        backgroundWash = Color(0xFFD8D3CC),
+        surface        = Color(0xFFF6F3EF),
+        surfaceRaised  = Color(0xFFFBF9F5),
+        cardEdge       = Color(0x14083A4F),  // navy @ 8%
+        textPrimary    = Color(0xFF083A4F),  // NAVY ink
+        textSecondary  = Color(0xFF3F6273),
+        textMuted      = Color(0xFF8A95A0),
+        accent         = Color(0xFF407E8C),  // TEAL
         accentDeep     = Color(0xFF1E5765),
-        accentOnButton = Color(0xFFF6F3EF), // onAccent (light card tone)
-        accentGlow     = Color(0x24407E8C), // accentSoft (~14%)
+        accentSoft     = Color(0x24407E8C),  // teal @ ~14%
+        onAccent       = Color(0xFFF6F3EF),
+        accentGlow     = Color(0x24407E8C),
         statusGlow     = Color(0x1A407E8C),
-        logoMark       = LogoMark(Color(0xFF8FB3BB), Color(0xFF407E8C), Color(0xFF1E5765)),
         priorityHigh   = Color(0xFF407E8C),
-        priorityMid    = Color(0xFFA58D66), // Gold
+        priorityMid    = Color(0xFFA58D66),  // GOLD
         priorityLow    = Color(0xFF8A95A0),
-        success        = Color(0xFF5BB58F),
         gold           = Color(0xFFA58D66),
+        success        = Color(0xFF5BB58F),
         error          = Color(0xFFB94A3B),
+        logoMark       = LogoMark(Color(0xFF8FB3BB), Color(0xFF407E8C), Color(0xFF1E5765)),
         isLight        = true,
     )
 
-    // --- SOHO Waterworks: Dark ----------------------------------------------
+    // --- Dark · Navy · Sand · Aqua ---------------------------------------
     private val DarkPalette = MorningPalette(
-        background     = Color(0xFF04222F), // Deepened Navy
-        surface        = Color(0xFF0E3D52), // card
-        surfaceRaised  = Color(0xFF134B63), // card raised
-        border         = Color(0x1AC0D5D6), // aqua @ 10% — cardEdge
-        textPrimary    = Color(0xFFE5E1DD), // Sand
-        textSecondary  = Color(0xFFC0D5D6), // Aqua-tinted inkSoft
-        textMuted      = Color(0x73E5E1DD), // sand @ 45% — inkMute
-        accent         = Color(0xFFC0D5D6), // Aqua
+        background     = Color(0xFF04222F),  // deepened NAVY
+        backgroundWash = Color(0xFF072D3D),
+        surface        = Color(0xFF0E3D52),
+        surfaceRaised  = Color(0xFF134B63),
+        cardEdge       = Color(0x1AC0D5D6),  // aqua @ 10%
+        textPrimary    = Color(0xFFE5E1DD),  // SAND text
+        textSecondary  = Color(0xFFC0D5D6),  // AQUA-tinted soft
+        textMuted      = Color(0x73E5E1DD),  // sand @ 45%
+        accent         = Color(0xFFC0D5D6),  // AQUA
         accentDeep     = Color(0xFF7DA9AE),
-        accentOnButton = Color(0xFF04222F), // onAccent (dark navy)
-        accentGlow     = Color(0x1FC0D5D6), // accentSoft (~12%)
+        accentSoft     = Color(0x1FC0D5D6),  // aqua @ ~12%
+        onAccent       = Color(0xFF04222F),
+        accentGlow     = Color(0x1FC0D5D6),
         statusGlow     = Color(0x1FC0D5D6),
-        logoMark       = LogoMark(Color(0xFFE3EEEF), Color(0xFFC0D5D6), Color(0xFF7DA9AE)),
         priorityHigh   = Color(0xFFC0D5D6),
-        priorityMid    = Color(0xFFC8B083), // Gold warmed for dark ground
+        priorityMid    = Color(0xFFC8B083),  // gold warmed for dark ground
         priorityLow    = Color(0x73E5E1DD),
-        success        = Color(0xFF5BB58F),
         gold           = Color(0xFFC8B083),
+        success        = Color(0xFF5BB58F),
         error          = Color(0xFFEF6B5B),
+        logoMark       = LogoMark(Color(0xFFE3EEEF), Color(0xFFC0D5D6), Color(0xFF7DA9AE)),
         isLight        = false,
     )
 
-    // --- Copy variants (still 4 buckets) ------------------------------------
+    fun light(slot: TimeSlot): MorningTheme = MorningTheme(slot = slot, palette = LightPalette)
+    fun dark(slot: TimeSlot):  MorningTheme = MorningTheme(slot = slot, palette = DarkPalette)
 
-    private val MorningCopySet = MorningCopy(
-        greeting        = R.string.greeting_morning,
-        statusLabel     = R.string.agent_status_ready,
-        runButton       = R.string.btn_start_the_day,
-        briefingSection = R.string.section_your_briefing,
-        tasksSection    = R.string.section_focus_today,
-    )
-
-    private val AfternoonCopySet = MorningCopy(
-        greeting        = R.string.greeting_afternoon,
-        statusLabel     = R.string.agent_status_resting,
-        runButton       = R.string.btn_refresh_briefing,
-        briefingSection = R.string.section_unfinished,
-        tasksSection    = R.string.section_loose_ends,
-    )
-
-    private val EveningCopySet = MorningCopy(
-        greeting        = R.string.greeting_evening,
-        statusLabel     = R.string.agent_status_active,
-        runButton       = R.string.btn_run_now,
-        briefingSection = R.string.section_todays_briefing,
-        tasksSection    = R.string.section_tasks,
-    )
-
-    private val WeekendCopySet = MorningCopy(
-        greeting        = R.string.greeting_weekend,
-        statusLabel     = R.string.agent_status_paused,
-        runButton       = R.string.btn_plan_next_week,
-        briefingSection = R.string.section_reflection,
-        tasksSection    = R.string.section_goals_next_week,
-    )
-
-    // --- Final theme presets: 2 palettes × 4 copy variants ------------------
-
-    fun light(timeOfDay: TimeOfDay): MorningTheme = MorningTheme(
-        timeOfDay = timeOfDay,
-        palette   = LightPalette,
-        copy      = copyFor(timeOfDay),
-    )
-
-    fun dark(timeOfDay: TimeOfDay): MorningTheme = MorningTheme(
-        timeOfDay = timeOfDay,
-        palette   = DarkPalette,
-        copy      = copyFor(timeOfDay),
-    )
-
-    // Convenience presets for previews — Evening/Morning copy on each palette.
-    val Light = light(TimeOfDay.Morning)
-    val Dark  = dark(TimeOfDay.Evening)
-
-    private fun copyFor(timeOfDay: TimeOfDay): MorningCopy = when (timeOfDay) {
-        TimeOfDay.Morning   -> MorningCopySet
-        TimeOfDay.Afternoon -> AfternoonCopySet
-        TimeOfDay.Evening   -> EveningCopySet
-        TimeOfDay.Weekend   -> WeekendCopySet
-    }
+    // Preview convenience.
+    val Light = light(TimeSlot.Midday)
+    val Dark  = dark(TimeSlot.Evening)
 }
 
-val LocalMorningTheme = staticCompositionLocalOf { MorningThemes.Dark }
+/** Active palette + active time slot. Copy is resolved per slot from strings.xml. */
+data class MorningTheme(
+    val slot:    TimeSlot,
+    val palette: MorningPalette,
+)
+
+val LocalMorningTheme = staticCompositionLocalOf { MorningThemes.Light }
 
 val MaterialTheme.morning: MorningPalette
     @Composable get() = LocalMorningTheme.current.palette
 
-val MaterialTheme.morningCopy: MorningCopy
-    @Composable get() = LocalMorningTheme.current.copy
+val MaterialTheme.morningSlot: TimeSlot
+    @Composable get() = LocalMorningTheme.current.slot
