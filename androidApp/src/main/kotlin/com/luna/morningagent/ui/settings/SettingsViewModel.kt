@@ -6,6 +6,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.luna.morningagent.data.agent.ProviderOption
 import com.luna.morningagent.data.notion.NotionConfigMissingException
 import com.luna.morningagent.data.notion.NotionRestClient
 import com.luna.morningagent.data.notion.NotionTaskSource
@@ -22,10 +23,13 @@ sealed interface NotionTestResult {
 }
 
 data class SettingsUiState(
+    val selectedProvider: ProviderOption = ProviderOption.Default,
     val geminiDraft: String      = "",
+    val claudeDraft: String      = "",
     val notionDraft: String      = "",
     val databaseDraft: String    = "",
     val geminiSavedLast4: String? = null,    // null = nothing saved yet
+    val claudeSavedLast4: String? = null,
     val notionSavedLast4: String? = null,
     val savedDatabaseId: String  = "",       // shown in field as draft starting value
     val autoRun: Boolean         = true,     // toggled directly, not via Save
@@ -47,7 +51,9 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     init {
         val savedDb = store.getNotionDatabaseId().orEmpty()
         uiState = uiState.copy(
+            selectedProvider = ProviderOption.fromId(store.getSelectedProvider()),
             geminiSavedLast4 = store.getGeminiKey()?.takeLast(4)?.takeIf { it.isNotEmpty() },
+            claudeSavedLast4 = store.getClaudeKey()?.takeLast(4)?.takeIf { it.isNotEmpty() },
             notionSavedLast4 = store.getNotionToken()?.takeLast(4)?.takeIf { it.isNotEmpty() },
             savedDatabaseId  = savedDb,
             databaseDraft    = savedDb,
@@ -60,6 +66,19 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     fun updateGeminiDraft(value: String) {
         uiState = uiState.copy(geminiDraft = value, justSaved = false)
+    }
+
+    fun updateClaudeDraft(value: String) {
+        uiState = uiState.copy(claudeDraft = value, justSaved = false)
+    }
+
+    // Provider is a one-time setup choice, not a daily decision — persist on
+    // toggle so the user doesn't have to remember to tap Save. The other
+    // provider's key + model preference stay intact so flipping back later
+    // doesn't lose state.
+    fun setProvider(option: ProviderOption) {
+        store.saveSelectedProvider(option.id)
+        uiState = uiState.copy(selectedProvider = option, justSaved = false)
     }
 
     fun updateNotionDraft(value: String) {
@@ -111,6 +130,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     fun clearDrafts() {
         uiState = uiState.copy(
             geminiDraft   = "",
+            claudeDraft   = "",
             notionDraft   = "",
             databaseDraft = uiState.savedDatabaseId,
             justSaved     = false,
@@ -136,6 +156,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     fun save() {
         if (uiState.geminiDraft.isNotEmpty()) store.saveGeminiKey(uiState.geminiDraft)
+        if (uiState.claudeDraft.isNotEmpty()) store.saveClaudeKey(uiState.claudeDraft)
         if (uiState.notionDraft.isNotEmpty()) store.saveNotionToken(uiState.notionDraft)
 
         val cleanedDb = extractNotionDatabaseId(uiState.databaseDraft)
@@ -143,14 +164,23 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             store.saveNotionDatabaseId(cleanedDb)
         }
 
+        // Rebuild state from store so all the last-4 masks refresh, but carry
+        // the toggle-style fields (provider, autoRun, daily briefing) forward
+        // explicitly — they were never tied to Save in the first place.
         uiState = SettingsUiState(
+            selectedProvider = uiState.selectedProvider,
             geminiDraft      = "",
+            claudeDraft      = "",
             notionDraft      = "",
             databaseDraft    = cleanedDb,
             geminiSavedLast4 = store.getGeminiKey()?.takeLast(4)?.takeIf { it.isNotEmpty() },
+            claudeSavedLast4 = store.getClaudeKey()?.takeLast(4)?.takeIf { it.isNotEmpty() },
             notionSavedLast4 = store.getNotionToken()?.takeLast(4)?.takeIf { it.isNotEmpty() },
             savedDatabaseId  = cleanedDb,
             autoRun          = uiState.autoRun,
+            dailyBriefing    = uiState.dailyBriefing,
+            briefingHour     = uiState.briefingHour,
+            briefingMinute   = uiState.briefingMinute,
             justSaved        = true,
         )
 

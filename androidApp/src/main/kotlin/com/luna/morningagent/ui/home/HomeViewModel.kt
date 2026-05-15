@@ -11,10 +11,16 @@ import com.luna.morningagent.R
 import com.luna.morningagent.data.AgentConfigMissingException
 import com.luna.morningagent.data.AgentNetworkException
 import com.luna.morningagent.data.AgentRepository
+import com.luna.morningagent.data.agent.BriefingGenerator
+import com.luna.morningagent.data.agent.ClaudeBriefingClient
+import com.luna.morningagent.data.agent.ClaudeModelOption
 import com.luna.morningagent.data.agent.GeminiBriefingClient
+import com.luna.morningagent.data.agent.GeminiModelOption
+import com.luna.morningagent.data.agent.ProviderOption
 import com.luna.morningagent.data.model.Briefing
 import com.luna.morningagent.data.notion.NotionRestClient
 import com.luna.morningagent.data.secure.TokenStore
+import com.luna.morningagent.ui.home.components.ModelChoice
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -35,24 +41,66 @@ sealed interface HomeUiState {
 class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
     private val tokenStore = TokenStore(application)
-    private val repo = AgentRepository(
-        notionTaskSource  = NotionRestClient(tokenStore),
-        briefingGenerator = GeminiBriefingClient(tokenStore),
-    )
+
+    // Build the repo per Run Now based on the active provider — switching providers
+    // in Settings doesn't require restarting the activity. Cheap; the heavy work is
+    // inside the LLM client's executor, which is constructed per generate() anyway.
+    private val repo: AgentRepository
+        get() = AgentRepository(
+            notionTaskSource  = NotionRestClient(tokenStore),
+            briefingGenerator = activeBriefingGenerator(),
+            tokenStore        = tokenStore,
+        )
+
+    private fun activeBriefingGenerator(): BriefingGenerator =
+        when (ProviderOption.fromId(tokenStore.getSelectedProvider())) {
+            ProviderOption.Gemini -> GeminiBriefingClient(tokenStore)
+            ProviderOption.Claude -> ClaudeBriefingClient(tokenStore)
+        }
 
     var uiState by mutableStateOf<HomeUiState>(HomeUiState.Empty)
         private set
 
-    // Selected Gemini model id (e.g. "gemini-2.5-flash"). The Home picker reads
-    // this and writes through setModel(); the agent layer resolves it on each
-    // generate() call so the next Run Now picks up the new choice.
-    var selectedModelId by mutableStateOf(tokenStore.getGeminiModel())
+    // Selected model id for the active provider (e.g. "gemini-2.5-flash" or
+    // "claude-sonnet-4-6"). The Home picker reads this and writes through
+    // setModel(); the agent layer resolves it on each generate() call so the
+    // next Run Now picks up today's choice.
+    var selectedModelId by mutableStateOf(currentProviderModelId())
         private set
 
-    // Drives the picker's visibility on Home — no key, no picker. Read fresh each
-    // recomposition so it flips on after the user saves a key in Settings.
-    val isGeminiConfigured: Boolean
-        get() = !tokenStore.getGeminiKey().isNullOrEmpty()
+    // Picker option list for the active provider. Recomputed when the provider
+    // flips in Settings — HomeScreen's refreshClock() seam catches the change.
+    var modelOptions: List<ModelChoice> by mutableStateOf(buildModelOptions(activeProvider()))
+        private set
+
+    // Drives the picker's visibility on Home — no key for the active provider,
+    // no picker. Read fresh each recomposition so it flips on after the user
+    // saves a key in Settings.
+    val isProviderConfigured: Boolean
+        get() = !activeProviderKey().isNullOrEmpty()
+
+    private fun activeProvider(): ProviderOption =
+        ProviderOption.fromId(tokenStore.getSelectedProvider())
+
+    private fun activeProviderKey(): String? = when (activeProvider()) {
+        ProviderOption.Gemini -> tokenStore.getGeminiKey()
+        ProviderOption.Claude -> tokenStore.getClaudeKey()
+    }
+
+    private fun currentProviderModelId(): String = when (activeProvider()) {
+        ProviderOption.Gemini -> tokenStore.getGeminiModel()
+        ProviderOption.Claude -> tokenStore.getClaudeModel()
+    }
+
+    private fun buildModelOptions(provider: ProviderOption): List<ModelChoice> =
+        when (provider) {
+            ProviderOption.Gemini -> GeminiModelOption.entries.map {
+                ModelChoice(id = it.id, displayName = it.displayName, tagline = it.tagline)
+            }
+            ProviderOption.Claude -> ClaudeModelOption.entries.map {
+                ModelChoice(id = it.id, displayName = it.displayName, tagline = it.tagline)
+            }
+        }
 
     // Header strings derived from the device clock. Backed by mutableStateOf + a
     // viewModelScope ticker so labels auto-flip across midnight or the picked
@@ -81,14 +129,17 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         startClockTicker()
     }
 
-    // Pulls fresh clock values into the state-backed fields. Called by the ticker
-    // every 30s for passive time-of-day progression, and by HomeScreen on entry
-    // so changes made in Settings are reflected without waiting for the next tick.
+    // Pulls fresh clock + provider values into the state-backed fields. Called by
+    // the ticker every 30s for passive time-of-day progression, and by HomeScreen
+    // on entry so changes made in Settings (briefing time, provider, model) land
+    // immediately without waiting for the next tick.
     fun refreshClock() {
         val now = LocalDateTime.now()
         greetingRes    = greetingResFor(now)
         headerSubtitle = formatHeaderSubtitle(now.toLocalDate())
         nextRunLabel   = computeNextRunLabel(now)
+        modelOptions   = buildModelOptions(activeProvider())
+        selectedModelId = currentProviderModelId()
     }
 
     private fun startClockTicker() {
@@ -110,7 +161,10 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setModel(id: String) {
-        tokenStore.saveGeminiModel(id)
+        when (activeProvider()) {
+            ProviderOption.Gemini -> tokenStore.saveGeminiModel(id)
+            ProviderOption.Claude -> tokenStore.saveClaudeModel(id)
+        }
         selectedModelId = id
     }
 
@@ -132,7 +186,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun hasMinimalConfig(): Boolean =
-        !tokenStore.getGeminiKey().isNullOrEmpty() &&
+        !activeProviderKey().isNullOrEmpty() &&
         !tokenStore.getNotionToken().isNullOrEmpty() &&
         !tokenStore.getNotionDatabaseId().isNullOrEmpty()
 
