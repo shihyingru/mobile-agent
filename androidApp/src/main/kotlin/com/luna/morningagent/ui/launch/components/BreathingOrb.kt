@@ -8,6 +8,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.size
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -18,15 +19,15 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.luna.morningagent.ui.theme.ColorAccent
 import com.luna.morningagent.ui.theme.MorningAgentTheme
+import com.luna.morningagent.ui.theme.morning
 
 // Reusable pulsing orb — also used (at smaller size) for the agent status dot on HomeScreen.
 @Composable
 fun BreathingOrb(
     modifier: Modifier = Modifier,
     size: Dp = 96.dp,
-    color: Color = ColorAccent,
+    color: Color = MaterialTheme.morning.accent,
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "orb")
     val scale by infiniteTransition.animateFloat(

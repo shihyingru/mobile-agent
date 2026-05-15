@@ -27,7 +27,6 @@ import androidx.compose.ui.unit.dp
 import com.luna.morningagent.R
 import com.luna.morningagent.ui.launch.components.BreathingOrb
 import com.luna.morningagent.ui.launch.components.LoadingDots
-import com.luna.morningagent.ui.theme.ColorBackground
 import com.luna.morningagent.ui.theme.MorningAgentTheme
 import com.luna.morningagent.ui.theme.MorningType
 import com.luna.morningagent.ui.theme.morning
@@ -73,7 +72,7 @@ fun LaunchScreen(onReady: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(ColorBackground),
+            .background(morning.background),
     ) {
         Column(
             modifier            = Modifier.align(Alignment.Center),

@@ -20,8 +20,11 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlin.time.Clock
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toLocalDateTime
 
 sealed interface HomeUiState {
     // attempt/total surface the retry hint in the UI: when attempt > 1 we show
@@ -73,12 +76,29 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         private set
 
     init {
-        // Auto-run on first composition when the user has opted in AND keys are
-        // configured. Otherwise stay Empty so they can read Settings or tap Run Now.
-        if (tokenStore.getAutoRun() && hasMinimalConfig()) {
+        // Hydrate from the on-disk cache first so a cold launch shows the last
+        // briefing the worker (or a previous Run Now) wrote, not an Empty state.
+        // If that cached briefing is from today, skip the auto-run — there's no
+        // point burning another Gemini call to regenerate the same data.
+        val cached = repo.getLastBriefing()
+        val cachedIsFromToday = cached?.let { isFromToday(it) } == true
+        if (cached != null) {
+            uiState = HomeUiState.Success(cached)
+        }
+
+        // Auto-run on first composition only when the user has opted in AND keys
+        // are configured AND the cache is stale (older than today, or absent).
+        if (!cachedIsFromToday && tokenStore.getAutoRun() && hasMinimalConfig()) {
             runNow()
         }
         startClockTicker()
+    }
+
+    private fun isFromToday(briefing: Briefing): Boolean {
+        val tz = TimeZone.currentSystemDefault()
+        val briefingDate = briefing.generatedAt.toLocalDateTime(tz).date
+        val today = Clock.System.now().toLocalDateTime(tz).date
+        return briefingDate == today
     }
 
     // Pulls fresh clock values into the state-backed fields. Called by the ticker

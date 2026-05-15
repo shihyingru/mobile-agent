@@ -62,7 +62,6 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.luna.morningagent.R
-import com.luna.morningagent.ui.theme.ColorBackground
 import com.luna.morningagent.ui.theme.MorningAgentTheme
 import com.luna.morningagent.ui.theme.MorningType
 import com.luna.morningagent.ui.theme.morning
@@ -121,7 +120,7 @@ private fun SettingsScreenContent(
 
     Scaffold(
         modifier       = modifier,
-        containerColor = ColorBackground,
+        containerColor = morning.background,
         topBar = {
             TopAppBar(
                 title          = { Text(stringResource(R.string.settings_title), style = MorningType.Title) },
@@ -135,7 +134,7 @@ private fun SettingsScreenContent(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor    = ColorBackground,
+                    containerColor    = morning.background,
                     titleContentColor = morning.textPrimary,
                 ),
             )
@@ -431,7 +430,7 @@ private fun BriefingTimeRow(
                     TimePicker(
                         state  = state,
                         colors = TimePickerDefaults.colors(
-                            clockDialColor             = ColorBackground,
+                            clockDialColor             = morning.background,
                             selectorColor              = morning.accent,
                             containerColor             = morning.surface,
                             periodSelectorBorderColor  = morning.border,
@@ -442,7 +441,7 @@ private fun BriefingTimeRow(
                             periodSelectorSelectedContentColor     = morning.surface,
                             periodSelectorUnselectedContentColor   = morning.textSecondary,
                             timeSelectorSelectedContainerColor     = morning.accent.copy(alpha = 0.2f),
-                            timeSelectorUnselectedContainerColor   = ColorBackground,
+                            timeSelectorUnselectedContainerColor   = morning.background,
                             timeSelectorSelectedContentColor       = morning.accent,
                             timeSelectorUnselectedContentColor     = morning.textPrimary,
                         ),

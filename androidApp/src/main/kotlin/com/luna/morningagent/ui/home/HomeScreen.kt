@@ -47,7 +47,6 @@ import com.luna.morningagent.ui.home.components.BriefingCard
 import com.luna.morningagent.ui.home.components.ModelPicker
 import com.luna.morningagent.ui.home.components.SectionLabel
 import com.luna.morningagent.ui.home.components.TaskCard
-import com.luna.morningagent.ui.theme.ColorBackground
 import com.luna.morningagent.ui.theme.MorningAgentTheme
 import com.luna.morningagent.ui.theme.MorningType
 import com.luna.morningagent.ui.theme.morning
@@ -101,7 +100,7 @@ private fun HomeScreenContent(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(ColorBackground),
+            .background(morning.background),
     ) {
         LazyColumn(
         modifier            = Modifier.fillMaxSize(),
@@ -257,9 +256,9 @@ private fun HomeScreenContent(
                 .background(
                     Brush.verticalGradient(
                         colors = listOf(
-                            ColorBackground,
-                            ColorBackground.copy(alpha = 0.85f),
-                            ColorBackground.copy(alpha = 0f),
+                            morning.background,
+                            morning.background.copy(alpha = 0.85f),
+                            morning.background.copy(alpha = 0f),
                         ),
                     ),
                 ),
