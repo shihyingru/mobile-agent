@@ -24,6 +24,10 @@ sealed interface NotionTestResult {
 
 data class SettingsUiState(
     val selectedProvider: ProviderOption = ProviderOption.Default,
+    // Selected model id for the active provider — derived from TokenStore on init
+    // and updated by setSelectedModel(). Each provider's model preference is
+    // stored independently in TokenStore so flipping back doesn't lose state.
+    val selectedModelId: String  = "",
     val geminiDraft: String      = "",
     val claudeDraft: String      = "",
     val notionDraft: String      = "",
@@ -49,9 +53,11 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         private set
 
     init {
-        val savedDb = store.getNotionDatabaseId().orEmpty()
+        val savedDb  = store.getNotionDatabaseId().orEmpty()
+        val provider = ProviderOption.fromId(store.getSelectedProvider())
         uiState = uiState.copy(
-            selectedProvider = ProviderOption.fromId(store.getSelectedProvider()),
+            selectedProvider = provider,
+            selectedModelId  = modelIdFor(provider),
             geminiSavedLast4 = store.getGeminiKey()?.takeLast(4)?.takeIf { it.isNotEmpty() },
             claudeSavedLast4 = store.getClaudeKey()?.takeLast(4)?.takeIf { it.isNotEmpty() },
             notionSavedLast4 = store.getNotionToken()?.takeLast(4)?.takeIf { it.isNotEmpty() },
@@ -62,6 +68,11 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             briefingHour     = store.getDailyBriefingHour(),
             briefingMinute   = store.getDailyBriefingMinute(),
         )
+    }
+
+    private fun modelIdFor(provider: ProviderOption): String = when (provider) {
+        ProviderOption.Gemini -> store.getGeminiModel()
+        ProviderOption.Claude -> store.getClaudeModel()
     }
 
     fun updateGeminiDraft(value: String) {
@@ -78,7 +89,23 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     // doesn't lose state.
     fun setProvider(option: ProviderOption) {
         store.saveSelectedProvider(option.id)
-        uiState = uiState.copy(selectedProvider = option, justSaved = false)
+        uiState = uiState.copy(
+            selectedProvider = option,
+            // Switch the visible model id to whatever was last picked for the new
+            // provider so the model chips reflect the right selection on switch.
+            selectedModelId  = modelIdFor(option),
+            justSaved        = false,
+        )
+    }
+
+    // Per-provider model choice (gemini-2.5-flash, claude-sonnet-4-6, …).
+    // Persisted immediately so the next agent run picks it up — no Save tap.
+    fun setSelectedModel(modelId: String) {
+        when (uiState.selectedProvider) {
+            ProviderOption.Gemini -> store.saveGeminiModel(modelId)
+            ProviderOption.Claude -> store.saveClaudeModel(modelId)
+        }
+        uiState = uiState.copy(selectedModelId = modelId)
     }
 
     fun updateNotionDraft(value: String) {
@@ -165,10 +192,11 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
 
         // Rebuild state from store so all the last-4 masks refresh, but carry
-        // the toggle-style fields (provider, autoRun, daily briefing) forward
-        // explicitly — they were never tied to Save in the first place.
+        // the toggle-style fields (provider, model, autoRun, daily briefing)
+        // forward explicitly — they were never tied to Save in the first place.
         uiState = SettingsUiState(
             selectedProvider = uiState.selectedProvider,
+            selectedModelId  = uiState.selectedModelId,
             geminiDraft      = "",
             claudeDraft      = "",
             notionDraft      = "",

@@ -113,4 +113,11 @@
     <string name="label_next_run">Next run</string>
     <string name="action_open_task">Open task</string>
     <string name="wordmark_agent">Agent</string>
+
+    <!-- v4 Settings -->
+    <string name="settings_provider_coming_soon">Coming soon</string>
+    <string name="settings_model_options_meta">%1$s · %2$d options</string>
+    <string name="settings_behavior_auto_run_sub">Run the agent as soon as you open the app.</string>
+    <string name="settings_behavior_daily_briefing_sub">Push the briefing when it\'s ready.</string>
+    <string name="settings_behavior_briefing_time_sub">Wakes the agent and delivers the briefing.</string>
 </resources>
