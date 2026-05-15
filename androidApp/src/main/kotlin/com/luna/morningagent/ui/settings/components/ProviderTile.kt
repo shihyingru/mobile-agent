@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -72,7 +71,10 @@ fun ProviderTile(
 
     Column(
         modifier = modifier
-            .widthIn(min = 124.dp)
+            // Fixed width — widthIn(min = ...) gets ignored inside a LazyRow's
+            // unbounded width constraints, which collapses the Spacer.weight(1f)
+            // gap inside and squashes the radio next to the brand logo.
+            .width(150.dp)
             .clip(RoundedCornerShape(14.dp))
             .background(tileBg)
             .border(width = borderWidth, color = borderColor, shape = RoundedCornerShape(14.dp))
@@ -81,9 +83,8 @@ fun ProviderTile(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Row(
-            modifier              = Modifier.fillMaxWidth(),
-            verticalAlignment     = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier          = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             // Brand logo box.
             Box(
@@ -104,6 +105,10 @@ fun ProviderTile(
                     ),
                 )
             }
+
+            // weight(1f) takes all remaining horizontal space so the radio
+            // pins to the right edge while the brand logo stays left.
+            Spacer(modifier = Modifier.weight(1f))
 
             // Radio circle.
             val radioBorder = when {

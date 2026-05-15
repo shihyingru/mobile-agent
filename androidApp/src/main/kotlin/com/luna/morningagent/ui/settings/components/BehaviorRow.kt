@@ -7,12 +7,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material3.Icon
@@ -35,10 +33,9 @@ import com.luna.morningagent.ui.theme.morning
  *
  * Title (sans 14.5sp/500) + sub (serif italic 13sp). Right side is either
  * a Material3 Switch (toggle) or a clickable value + chevron (drill-in).
- *
- * `indented = true` adds a 2dp accentSoft left border + extra start padding,
- * matching the JSX pattern for "child" rows like Briefing time under Daily
- * briefing.
+ * All rows share the same left padding so the title column stays aligned
+ * across the section — child rows like Briefing time line up with the
+ * toggle rows above instead of inset.
  */
 @Composable
 fun BehaviorToggleRow(
@@ -47,10 +44,9 @@ fun BehaviorToggleRow(
     on: Boolean,
     onToggle: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
-    indented: Boolean = false,
 ) {
     val morning = MaterialTheme.morning
-    BehaviorRowFrame(modifier = modifier, indented = indented) {
+    BehaviorRowFrame(modifier = modifier) {
         BehaviorRowText(title = title, sub = sub)
         Switch(
             checked         = on,
@@ -74,13 +70,9 @@ fun BehaviorValueRow(
     value: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    indented: Boolean = false,
 ) {
     val morning = MaterialTheme.morning
-    BehaviorRowFrame(
-        modifier = modifier.clickable(onClick = onClick),
-        indented = indented,
-    ) {
+    BehaviorRowFrame(modifier = modifier.clickable(onClick = onClick)) {
         BehaviorRowText(title = title, sub = sub)
         Row(
             verticalAlignment     = Alignment.CenterVertically,
@@ -104,36 +96,16 @@ fun BehaviorValueRow(
 @Composable
 private fun BehaviorRowFrame(
     modifier: Modifier = Modifier,
-    indented: Boolean,
     content: @Composable RowScope.() -> Unit,
 ) {
-    val morning = MaterialTheme.morning
-    Box(
-        modifier = modifier
+    Row(
+        modifier              = modifier
             .fillMaxWidth()
-            // Bottom hairline acts as the divider between rows.
-            .padding(start = if (indented) 18.dp else 2.dp, end = 2.dp),
+            .padding(horizontal = 2.dp, vertical = 14.dp),
+        verticalAlignment     = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        Row(
-            modifier              = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 14.dp),
-            verticalAlignment     = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            content()
-        }
-        // Indented marker — 2dp accent-soft left bar, mirroring the JSX
-        // borderLeft on "child" rows like Briefing time.
-        if (indented) {
-            Box(
-                modifier = Modifier
-                    .padding(end = 8.dp)
-                    .width(2.dp)
-                    .fillMaxHeight()
-                    .background(morning.accentSoft),
-            )
-        }
+        content()
     }
 }
 
@@ -194,7 +166,6 @@ private fun BehaviorRowsPreview() {
                 sub      = "Wakes the agent and delivers the briefing.",
                 value    = "9:00 AM",
                 onClick  = {},
-                indented = true,
             )
             BehaviorDivider()
         }

@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -138,7 +139,11 @@ private fun SettingsScreenContent(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(morning.background),
+            .background(morning.background)
+            // imePadding shrinks the available area when the soft keyboard
+            // shows, so the verticalScroll + bringIntoView combo can pull the
+            // focused field above the IME instead of leaving it occluded.
+            .imePadding(),
     ) {
         Column(
             modifier            = Modifier
@@ -318,11 +323,10 @@ private fun SettingsScreenContent(
                 BehaviorDivider()
                 if (uiState.dailyBriefing) {
                     BehaviorValueRow(
-                        title    = stringResource(R.string.settings_briefing_time_label),
-                        sub      = stringResource(R.string.settings_behavior_briefing_time_sub),
-                        value    = formatTime(uiState.briefingHour, uiState.briefingMinute),
-                        onClick  = { showTimePicker = true },
-                        indented = true,
+                        title   = stringResource(R.string.settings_briefing_time_label),
+                        sub     = stringResource(R.string.settings_behavior_briefing_time_sub),
+                        value   = formatTime(uiState.briefingHour, uiState.briefingMinute),
+                        onClick = { showTimePicker = true },
                     )
                     BehaviorDivider()
                 }
