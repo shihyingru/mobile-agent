@@ -132,6 +132,65 @@ class SharedPostsRepository(
         writeCache(current)
     }
 
+    /**
+     * Rename a category across the taxonomy + every cached post that uses it.
+     * If `new` already exists on a post (i.e. both old + new are present),
+     * the rename de-dupes. Notion mirror gets a patch per affected post.
+     * No-ops when `old` isn't in the taxonomy or `new` is blank / same as old.
+     */
+    suspend fun renameCategory(old: String, new: String) {
+        val oldName = old.trim()
+        val newName = new.trim()
+        if (oldName.isBlank() || newName.isBlank() || oldName == newName) return
+
+        val taxonomy = tokenStore.getSharedPostsTaxonomy()
+        if (oldName !in taxonomy) return
+        // Preserve order; drop duplicates that would arise if `new` was already there.
+        val nextTaxonomy = taxonomy.map { if (it == oldName) newName else it }.distinct()
+        tokenStore.saveSharedPostsTaxonomy(nextTaxonomy)
+
+        val affected = mutableListOf<SharedPost>()
+        readCache().forEach { post ->
+            if (oldName in post.categories) {
+                val swapped = post.categories.map { if (it == oldName) newName else it }.distinct()
+                updateCache(post.localId) { it.copy(categories = swapped) }
+                if (post.notionId != null) {
+                    affected.add(post.copy(categories = swapped))
+                }
+            }
+        }
+        affected.forEach { p ->
+            runCatching { notionClient.updatePageCategoriesAndSummary(p.notionId!!, p.categories, p.summary) }
+        }
+    }
+
+    /**
+     * Delete a category from the taxonomy and strip it from every cached post.
+     * Notion-synced posts get a patch with the trimmed categories list.
+     * No-op when `name` isn't in the taxonomy.
+     */
+    suspend fun deleteCategory(name: String) {
+        val target = name.trim()
+        if (target.isBlank()) return
+        val taxonomy = tokenStore.getSharedPostsTaxonomy()
+        if (target !in taxonomy) return
+        tokenStore.saveSharedPostsTaxonomy(taxonomy.filterNot { it == target })
+
+        val affected = mutableListOf<SharedPost>()
+        readCache().forEach { post ->
+            if (target in post.categories) {
+                val trimmed = post.categories.filterNot { it == target }
+                updateCache(post.localId) { it.copy(categories = trimmed) }
+                if (post.notionId != null) {
+                    affected.add(post.copy(categories = trimmed))
+                }
+            }
+        }
+        affected.forEach { p ->
+            runCatching { notionClient.updatePageCategoriesAndSummary(p.notionId!!, p.categories, p.summary) }
+        }
+    }
+
     // --- Cache I/O ----------------------------------------------------------
 
     @Synchronized
