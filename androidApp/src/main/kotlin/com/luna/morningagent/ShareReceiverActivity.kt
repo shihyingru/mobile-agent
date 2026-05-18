@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.widget.Toast
 import com.luna.morningagent.data.secure.TokenStore
 import com.luna.morningagent.data.sharedposts.SaveResult
+import com.luna.morningagent.data.sharedposts.SharedPostCategorizer
 import com.luna.morningagent.data.sharedposts.SharedPostsRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -40,19 +41,39 @@ class ShareReceiverActivity : Activity() {
         }
 
         val appContext = applicationContext
-        val repo = SharedPostsRepository(TokenStore(appContext))
+        val tokenStore = TokenStore(appContext)
+        val repo = SharedPostsRepository(tokenStore)
+        val categorizer = SharedPostCategorizer(tokenStore)
 
-        // App-scoped coroutine so the save survives the immediate finish().
+        // App-scoped coroutine so the save + categorization survive the
+        // immediate finish() — the activity is gone but the work runs to
+        // completion in the same process.
         appScope.launch {
-            val result = runCatching { repo.save(rawText, subject) }
-                .getOrElse { SaveResult.SavedPending }   // Cached-only is still a save.
+            val result = runCatching { repo.save(rawText, subject) }.getOrNull()
             val toastRes = when (result) {
-                SaveResult.SavedToNotion -> R.string.share_saved_toast
-                SaveResult.SavedPending  -> R.string.share_saved_pending_toast
-                SaveResult.EmptyInput    -> R.string.share_saved_failed_toast
+                is SaveResult.SavedToNotion -> R.string.share_saved_toast
+                is SaveResult.SavedPending  -> R.string.share_saved_pending_toast
+                SaveResult.EmptyInput, null -> R.string.share_saved_failed_toast
             }
             withContext(Dispatchers.Main) {
                 Toast.makeText(appContext, toastRes, Toast.LENGTH_SHORT).show()
+            }
+
+            // Categorize the post in the background once it's cached. Fire even
+            // when only locally cached — the agent's output sticks in the cache,
+            // and the Notion patch happens later when the post syncs.
+            result?.post?.let { saved ->
+                val categories = categorizer.categorize(
+                    post              = saved,
+                    existingTaxonomy  = tokenStore.getSharedPostsTaxonomy(),
+                )
+                if (categories != null) {
+                    repo.applyCategorization(
+                        localId    = saved.localId,
+                        categories = categories.categories,
+                        summary    = categories.summary.ifBlank { null },
+                    )
+                }
             }
         }
 

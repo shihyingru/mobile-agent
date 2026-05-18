@@ -75,6 +75,42 @@ class SharedPostsNotionClient(
         }
     }
 
+    /**
+     * Partial update — writes only Categories + Summary. Notion's pages PATCH
+     * endpoint merges per property, so other fields (Source, URL, …) stay put.
+     * Called by the repository when the agent finishes categorizing a post.
+     */
+    suspend fun updatePageCategoriesAndSummary(
+        pageId: String,
+        categories: List<String>,
+        summary: String?,
+    ) {
+        val token = requireToken()
+        httpClient.patch("$NOTION_API_BASE/pages/$pageId") {
+            authHeaders(token)
+            contentType(ContentType.Application.Json)
+            setBody(buildJsonObject {
+                putJsonObject("properties") {
+                    putJsonObject(PROP_CATEGORIES) {
+                        putJsonArray("multi_select") {
+                            categories.forEach { addJsonObject { put("name", it) } }
+                        }
+                    }
+                    summary?.takeIf { it.isNotBlank() }?.let { s ->
+                        putJsonObject(PROP_SUMMARY) {
+                            putJsonArray("rich_text") {
+                                addJsonObject {
+                                    put("type", "text")
+                                    putJsonObject("text") { put("content", s) }
+                                }
+                            }
+                        }
+                    }
+                }
+            })
+        }
+    }
+
     private fun requireToken(): String = tokenStore.getNotionToken()
         ?: throw NotionConfigMissingException("Notion integration token not set in Settings")
 

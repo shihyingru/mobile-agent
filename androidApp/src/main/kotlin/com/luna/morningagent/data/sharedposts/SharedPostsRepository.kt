@@ -58,20 +58,66 @@ class SharedPostsRepository(
 
         val dbId = tokenStore.getSharedPostsDbId()
         if (dbId == null) {
-            return SaveResult.SavedPending
+            return SaveResult.SavedPending(post)
         }
 
         // Notion write — on failure, leave the cache entry pendingSync = true
         // and let the banner flush later. The save itself still succeeded.
         return runCatching { notionClient.createPage(dbId, post) }
             .map { notionId ->
-                updateCache(post.localId) { it.copy(notionId = notionId, pendingSync = false) }
-                SaveResult.SavedToNotion
+                val synced = post.copy(notionId = notionId, pendingSync = false)
+                updateCache(post.localId) { synced }
+                SaveResult.SavedToNotion(synced)
             }
-            .getOrElse { error ->
+            .getOrElse { _ ->
                 updateCache(post.localId) { it.copy(pendingSync = true) }
-                SaveResult.SavedPending // Treat network/Notion errors like missing-DB: still cached.
+                SaveResult.SavedPending(post)
             }
+    }
+
+    /**
+     * Apply the agent's categorization to a cached post. Auto-adds any new
+     * category names to the TokenStore taxonomy so the list grows organically
+     * from the `["Misc"]` seed. If the post is already mirrored to Notion
+     * (notionId set), patches the remote page too — failures here only flag
+     * the post for retry; the local cache update stands.
+     */
+    suspend fun applyCategorization(
+        localId: String,
+        categories: List<String>,
+        summary: String?,
+    ) {
+        // Filter out blanks and de-dupe (preserve agent order for the chip layout).
+        val cleaned = categories
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+        if (cleaned.isEmpty() && summary.isNullOrBlank()) return
+
+        val currentTaxonomy = tokenStore.getSharedPostsTaxonomy()
+        val newCategoryNames = cleaned.filter { it !in currentTaxonomy }
+        if (newCategoryNames.isNotEmpty()) {
+            tokenStore.saveSharedPostsTaxonomy(currentTaxonomy + newCategoryNames)
+        }
+
+        var notionIdToPatch: String? = null
+        updateCache(localId) { existing ->
+            notionIdToPatch = existing.notionId
+            existing.copy(
+                categories            = cleaned,
+                summary               = summary?.trim()?.takeIf { it.isNotBlank() },
+                pendingCategorization = false,
+            )
+        }
+
+        notionIdToPatch?.let { pageId ->
+            runCatching { notionClient.updatePageCategoriesAndSummary(pageId, cleaned, summary) }
+                .onFailure {
+                    // Local cache stands; flip the post back to pendingCategorization
+                    // so a future run can re-push to Notion without losing the data.
+                    updateCache(localId) { it.copy(pendingCategorization = true) }
+                }
+        }
     }
 
     fun listAll(): List<SharedPost> = readCache()
@@ -168,10 +214,13 @@ class SharedPostsRepository(
 }
 
 sealed interface SaveResult {
+    /** Convenience accessor — null when the save was rejected as empty input. */
+    val post: SharedPost?
+
     /** Post was cached and mirrored to Notion successfully. */
-    data object SavedToNotion : SaveResult
+    data class SavedToNotion(override val post: SharedPost) : SaveResult
     /** Post was cached but the Notion mirror is pending (no DB id, or write failed). */
-    data object SavedPending  : SaveResult
+    data class SavedPending(override val post: SharedPost)  : SaveResult
     /** Input was empty / whitespace — nothing was saved. */
-    data object EmptyInput    : SaveResult
+    data object EmptyInput : SaveResult { override val post: SharedPost? = null }
 }
