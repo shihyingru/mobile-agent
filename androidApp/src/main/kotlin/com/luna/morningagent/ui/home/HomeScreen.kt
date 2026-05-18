@@ -1,6 +1,7 @@
 package com.luna.morningagent.ui.home
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,6 +23,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -56,6 +58,7 @@ import com.luna.morningagent.ui.theme.slotCopy
 @Composable
 fun HomeScreen(
     onNavigateToSettings: () -> Unit,
+    onNavigateToSavedPosts: () -> Unit,
     modifier: Modifier = Modifier,
     vm: HomeViewModel = viewModel(),
 ) {
@@ -64,12 +67,15 @@ fun HomeScreen(
     LaunchedEffect(Unit) { vm.refreshClock() }
 
     HomeScreenContent(
-        uiState              = vm.uiState,
-        nextRunLabel         = vm.nextRunLabel,
-        headerDateLine       = vm.headerDateLine,
-        onRunNow             = vm::runNow,
-        onNavigateToSettings = onNavigateToSettings,
-        modifier             = modifier,
+        uiState                = vm.uiState,
+        nextRunLabel           = vm.nextRunLabel,
+        headerDateLine         = vm.headerDateLine,
+        pendingSharedPosts     = vm.pendingSharedPostsCount,
+        sharedPostsDbConfigured = vm.sharedPostsDbConfigured,
+        onRunNow               = vm::runNow,
+        onNavigateToSettings   = onNavigateToSettings,
+        onNavigateToSavedPosts = onNavigateToSavedPosts,
+        modifier               = modifier,
     )
 }
 
@@ -78,8 +84,11 @@ private fun HomeScreenContent(
     uiState: HomeUiState,
     nextRunLabel: String?,
     headerDateLine: String,
+    pendingSharedPosts: Int,
+    sharedPostsDbConfigured: Boolean,
     onRunNow: () -> Unit,
     onNavigateToSettings: () -> Unit,
+    onNavigateToSavedPosts: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val morning = MaterialTheme.morning
@@ -118,9 +127,26 @@ private fun HomeScreenContent(
             ),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            item { TopBar(onSettingsClick = onNavigateToSettings) }
+            item {
+                TopBar(
+                    onSettingsClick = onNavigateToSettings,
+                    onSavedClick    = onNavigateToSavedPosts,
+                )
+            }
 
             item { GreetingBlock(dateLine = headerDateLine) }
+
+            // Banner only when Luna shared posts BEFORE configuring the Notion
+            // mirror — tap routes to SavedPostsScreen where the inline setup
+            // card lives. Hidden once dbId lands.
+            if (pendingSharedPosts > 0 && !sharedPostsDbConfigured) {
+                item {
+                    PendingSavesBanner(
+                        count   = pendingSharedPosts,
+                        onClick = onNavigateToSavedPosts,
+                    )
+                }
+            }
 
             if (uiState is HomeUiState.Error) {
                 item { ErrorBanner(message = uiState.message, onOpenSettings = onNavigateToSettings) }
@@ -189,7 +215,10 @@ private fun HomeScreenContent(
 // --- v4 blocks ------------------------------------------------------------
 
 @Composable
-private fun TopBar(onSettingsClick: () -> Unit) {
+private fun TopBar(
+    onSettingsClick: () -> Unit,
+    onSavedClick: () -> Unit,
+) {
     val morning = MaterialTheme.morning
     Row(
         modifier              = Modifier
@@ -226,13 +255,45 @@ private fun TopBar(onSettingsClick: () -> Unit) {
                 color = morning.textPrimary,
             )
         }
-        IconButton(onClick = onSettingsClick) {
-            Icon(
-                imageVector        = Icons.Rounded.Settings,
-                contentDescription = stringResource(R.string.cd_settings),
-                tint               = morning.textSecondary.copy(alpha = 0.8f),
-            )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onSavedClick) {
+                Icon(
+                    imageVector        = Icons.Outlined.BookmarkBorder,
+                    contentDescription = stringResource(R.string.cd_saved_posts),
+                    tint               = morning.textSecondary.copy(alpha = 0.8f),
+                )
+            }
+            IconButton(onClick = onSettingsClick) {
+                Icon(
+                    imageVector        = Icons.Rounded.Settings,
+                    contentDescription = stringResource(R.string.cd_settings),
+                    tint               = morning.textSecondary.copy(alpha = 0.8f),
+                )
+            }
         }
+    }
+}
+
+@Composable
+private fun PendingSavesBanner(count: Int, onClick: () -> Unit) {
+    val morning = MaterialTheme.morning
+    Row(
+        modifier              = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 4.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(morning.accentSoft)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalAlignment     = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            text     = stringResource(R.string.home_pending_banner, count),
+            style    = MorningType.BodyReadItalic.copy(fontSize = androidx.compose.ui.unit.TextUnit(14f, androidx.compose.ui.unit.TextUnitType.Sp)),
+            color    = morning.accent,
+            modifier = Modifier.weight(1f),
+        )
     }
 }
 
@@ -359,7 +420,10 @@ private fun HomeSuccessPreview() {
             nextRunLabel         = "tomorrow, 9:00",
             headerDateLine       = "FRIDAY · MAY 15 · 2:23 PM",
             onRunNow             = {},
-            onNavigateToSettings = {},
+            pendingSharedPosts     = 0,
+            sharedPostsDbConfigured = true,
+            onNavigateToSettings   = {},
+            onNavigateToSavedPosts = {},
         )
     }
 }
@@ -373,7 +437,10 @@ private fun HomeLoadingPreview() {
             nextRunLabel         = "tomorrow, 9:00",
             headerDateLine       = "FRIDAY · MAY 15 · 2:23 PM",
             onRunNow             = {},
-            onNavigateToSettings = {},
+            pendingSharedPosts     = 0,
+            sharedPostsDbConfigured = true,
+            onNavigateToSettings   = {},
+            onNavigateToSavedPosts = {},
         )
     }
 }
@@ -387,7 +454,10 @@ private fun HomeEmptyPreview() {
             nextRunLabel         = "tomorrow, 9:00",
             headerDateLine       = "FRIDAY · MAY 15 · 2:23 PM",
             onRunNow             = {},
-            onNavigateToSettings = {},
+            pendingSharedPosts     = 0,
+            sharedPostsDbConfigured = true,
+            onNavigateToSettings   = {},
+            onNavigateToSavedPosts = {},
         )
     }
 }
@@ -401,7 +471,10 @@ private fun HomeErrorPreview() {
             nextRunLabel         = null,
             headerDateLine       = "FRIDAY · MAY 15 · 2:23 PM",
             onRunNow             = {},
-            onNavigateToSettings = {},
+            pendingSharedPosts     = 0,
+            sharedPostsDbConfigured = true,
+            onNavigateToSettings   = {},
+            onNavigateToSavedPosts = {},
         )
     }
 }

@@ -16,6 +16,7 @@ import com.luna.morningagent.data.agent.ProviderOption
 import com.luna.morningagent.data.model.Briefing
 import com.luna.morningagent.data.notion.NotionRestClient
 import com.luna.morningagent.data.secure.TokenStore
+import com.luna.morningagent.data.sharedposts.SharedPostsRepository
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -80,6 +81,17 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     var nextRunLabel: String? by mutableStateOf(computeNextRunLabel(LocalDateTime.now()))
         private set
 
+    // Shared-posts banner state. Counts posts cached locally but not yet
+    // mirrored to Notion. Refreshed on entry + on the ticker so the banner
+    // appears / disappears as Luna adds saves or finishes setup.
+    private val sharedPostsRepo = SharedPostsRepository(tokenStore)
+
+    var pendingSharedPostsCount: Int by mutableStateOf(0)
+        private set
+
+    var sharedPostsDbConfigured: Boolean by mutableStateOf(tokenStore.getSharedPostsDbId() != null)
+        private set
+
     init {
         // Hydrate from the on-disk cache first so a cold launch shows the last
         // briefing the worker (or a previous Run Now) wrote, not an Empty state.
@@ -112,8 +124,10 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     // immediately without waiting for the next tick.
     fun refreshClock() {
         val now = LocalDateTime.now()
-        headerDateLine = formatDateLine(now)
-        nextRunLabel   = computeNextRunLabel(now)
+        headerDateLine          = formatDateLine(now)
+        nextRunLabel            = computeNextRunLabel(now)
+        pendingSharedPostsCount = sharedPostsRepo.listAll().count { it.pendingSync }
+        sharedPostsDbConfigured = tokenStore.getSharedPostsDbId() != null
     }
 
     private fun startClockTicker() {

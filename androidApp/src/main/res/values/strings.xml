@@ -118,6 +118,8 @@
     <string name="share_saved_toast">Saved to Morning Agent</string>
     <string name="share_saved_pending_toast">Saved · finish Notion setup in app to sync</string>
     <string name="share_saved_failed_toast">Couldn\'t save — try again</string>
+    <string name="cd_saved_posts">Saved posts</string>
+    <string name="home_pending_banner">%1$d saves waiting · finish Notion sync</string>
 
     <!-- v4 Settings -->
     <string name="settings_provider_coming_soon">Coming soon</string>
