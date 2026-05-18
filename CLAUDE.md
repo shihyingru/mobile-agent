@@ -6,16 +6,6 @@
 
 Morning Agent — Luna's personal Android app. Wakes at 9:00 AM, fetches high-priority Notion tasks, asks Gemini for efficiency tips, delivers a briefing notification. Personal tool, not a product — optimize for clarity and craft, not enterprise concerns.
 
-## Phase plan
-
-One feature branch per slice, named `feature/<core-detail>`. Don't bring forward later steps; keep their seams as `TODO(Phase 2 stepN: …)` until their slice arrives.
-
-- ✅ Phase 1 — UI prototype: Launch + Home, mock data, edge-to-edge with status-bar gradient scrim, breathing accent dot.
-- ✅ Step 1 — `TokenStore` (EncryptedSharedPreferences) + Settings UI with masked fields.
-- ✅ Step 2 — `NotionRestClient` against `api.notion.com/v1` (Bearer + `Notion-Version: 2022-06-28`) behind a `NotionTaskSource` interface; Settings adds the database field, intro paragraph, "Test Notion connection", and inline `****<last4>` saved-state mask. Drafts clear on back navigation.
-- ✅ Step 3 — Koog agent + Gemini wiring. `AgentRepository.runAgent()` fetches Notion tasks, calls Gemini via `PromptExecutor.execute()` so token counts surface, retries 503/UNAVAILABLE and 429/RESOURCE_EXHAUSTED with 1s/3s/7s backoff and a `Retrying… (n/total)` UI hint. Home gets a Gemini model picker (Flash-Lite / Flash / Pro, free-tier captions) visible once a Gemini key is saved. Settings adds a `BEHAVIOR` / `Auto-run on launch` toggle. Notion fetch is now `Priority=High AND Status≠Done AND Date≤today`, sorted by Date descending; each task carries an Area tag with a per-area Material rounded icon.
-- ✅ Step 4 — WorkManager daily schedule + briefing notification. `MorningAgentWorker` (CoroutineWorker) calls `AgentRepository.runAgent()`, persists the result as JSON via `TokenStore`, and posts a Material notification on the `morning_briefing` channel. `BriefingScheduler.ensure/replace/disable` enqueues a `PeriodicWorkRequest` (1-day interval, `CONNECTED` constraint, initialDelay to the next picked time-of-day). `MainActivity` runs `ensureNotificationChannel()` + `BriefingScheduler.ensure()` on every launch (idempotent KEEP policy), and requests `POST_NOTIFICATIONS` on API 33+ when the toggle is on. Settings adds a `Daily briefing notification` toggle and a Material3 `TimePicker` dialog so Luna can pick any time of day; changing the time calls `BriefingScheduler.replace()` for instant effect.
-
 ## Non-obvious decisions
 
 - **Kotlin 2.3 jvmTarget DSL.** The AGP-side `android { kotlinOptions {} }` block was removed in 2.3. `jvmTarget` lives in a top-level `kotlin { compilerOptions { jvmTarget.set(JvmTarget.JVM_17) } }`. Keep that pattern.
