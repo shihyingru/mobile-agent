@@ -1,22 +1,25 @@
 package com.luna.morningagent.ui.settings
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -24,24 +27,16 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimePicker
 import androidx.compose.material3.TimePickerDefaults
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -51,21 +46,28 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.FocusDirection
-import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.luna.morningagent.R
+import com.luna.morningagent.data.agent.ClaudeModelOption
+import com.luna.morningagent.data.agent.GeminiModelOption
 import com.luna.morningagent.data.agent.ProviderOption
-import com.luna.morningagent.ui.theme.ColorBackground
+import com.luna.morningagent.ui.settings.components.BehaviorDivider
+import com.luna.morningagent.ui.settings.components.BehaviorToggleRow
+import com.luna.morningagent.ui.settings.components.BehaviorValueRow
+import com.luna.morningagent.ui.settings.components.ModelChip
+import com.luna.morningagent.ui.settings.components.ProviderTile
+import com.luna.morningagent.ui.settings.components.ProviderTileData
+import com.luna.morningagent.ui.settings.components.SettingsInput
 import com.luna.morningagent.ui.theme.MorningAgentTheme
 import com.luna.morningagent.ui.theme.MorningType
 import com.luna.morningagent.ui.theme.morning
@@ -86,6 +88,7 @@ fun SettingsScreen(
     SettingsScreenContent(
         uiState                = vm.uiState,
         onProviderChange       = vm::setProvider,
+        onModelChange          = vm::setSelectedModel,
         onGeminiDraftChange    = vm::updateGeminiDraft,
         onClaudeDraftChange    = vm::updateClaudeDraft,
         onNotionDraftChange    = vm::updateNotionDraft,
@@ -94,18 +97,18 @@ fun SettingsScreen(
         onDailyBriefingChange  = vm::setDailyBriefing,
         onBriefingTimeChange   = vm::setBriefingTime,
         onSendTestNotification = vm::sendTestNotification,
-        onSave                 = vm::save,
         onTestNotion           = vm::testNotionConnection,
+        onSave                 = vm::save,
         onBack                 = handleBack,
         modifier               = modifier,
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SettingsScreenContent(
     uiState: SettingsUiState,
     onProviderChange: (ProviderOption) -> Unit,
+    onModelChange: (String) -> Unit,
     onGeminiDraftChange: (String) -> Unit,
     onClaudeDraftChange: (String) -> Unit,
     onNotionDraftChange: (String) -> Unit,
@@ -114,597 +117,571 @@ private fun SettingsScreenContent(
     onDailyBriefingChange: (Boolean) -> Unit,
     onBriefingTimeChange: (Int, Int) -> Unit,
     onSendTestNotification: () -> Unit,
-    onSave: () -> Unit,
     onTestNotion: () -> Unit,
+    onSave: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val morning = MaterialTheme.morning
     val focusManager = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
-    val canSave = uiState.geminiDraft.isNotEmpty() ||
+
+    val statusBars = WindowInsets.statusBars.asPaddingValues()
+    val navBars    = WindowInsets.navigationBars.asPaddingValues()
+
+    val hasChanges = uiState.geminiDraft.isNotEmpty() ||
         uiState.claudeDraft.isNotEmpty() ||
         uiState.notionDraft.isNotEmpty() ||
         uiState.databaseDraft != uiState.savedDatabaseId
 
-    Scaffold(
-        modifier       = modifier,
-        containerColor = ColorBackground,
-        topBar = {
-            TopAppBar(
-                title          = { Text(stringResource(R.string.settings_title), style = MorningType.Title) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector        = Icons.AutoMirrored.Rounded.ArrowBack,
-                            contentDescription = stringResource(R.string.cd_back),
-                            tint               = morning.textSecondary,
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor    = ColorBackground,
-                    titleContentColor = morning.textPrimary,
-                ),
-            )
-        },
-    ) { innerPadding ->
+    var showTimePicker by remember { mutableStateOf(false) }
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(morning.background)
+            // imePadding shrinks the available area when the soft keyboard
+            // shows, so the verticalScroll + bringIntoView combo can pull the
+            // focused field above the IME instead of leaving it occluded.
+            .imePadding(),
+    ) {
         Column(
-            modifier = Modifier
+            modifier            = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+                .padding(
+                    start  = 18.dp,
+                    end    = 18.dp,
+                    top    = 18.dp + statusBars.calculateTopPadding(),
+                    bottom = 36.dp + navBars.calculateBottomPadding(),
+                ),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text(
-                text  = stringResource(R.string.settings_intro),
-                style = MorningType.Body,
-                color = morning.textSecondary,
-            )
-
-            Text(
-                text  = stringResource(R.string.settings_section_provider),
-                style = MorningType.Label,
-                color = morning.textMuted,
-            )
-
-            ProviderRow(
-                selected = uiState.selectedProvider,
-                onSelect = onProviderChange,
-            )
-
-            Text(
-                text  = stringResource(R.string.settings_section_credentials),
-                style = MorningType.Label,
-                color = morning.textMuted,
-            )
-
-            // Conditional API-key field: shows only the active provider's key.
-            // The other provider's key stays saved silently — flipping providers
-            // doesn't wipe it.
-            when (uiState.selectedProvider) {
-                ProviderOption.Gemini -> SecretField(
-                    label       = stringResource(R.string.settings_field_gemini),
-                    draft       = uiState.geminiDraft,
-                    savedLast4  = uiState.geminiSavedLast4,
-                    onChange    = onGeminiDraftChange,
-                    imeAction   = ImeAction.Next,
-                    keyboardActions = KeyboardActions(
-                        onNext = { focusManager.moveFocus(FocusDirection.Down) },
-                    ),
-                )
-                ProviderOption.Claude -> SecretField(
-                    label       = stringResource(R.string.settings_field_claude),
-                    draft       = uiState.claudeDraft,
-                    savedLast4  = uiState.claudeSavedLast4,
-                    onChange    = onClaudeDraftChange,
-                    imeAction   = ImeAction.Next,
-                    keyboardActions = KeyboardActions(
-                        onNext = { focusManager.moveFocus(FocusDirection.Down) },
-                    ),
-                )
-            }
-
-            SecretField(
-                label       = stringResource(R.string.settings_field_notion),
-                draft       = uiState.notionDraft,
-                savedLast4  = uiState.notionSavedLast4,
-                onChange    = onNotionDraftChange,
-                imeAction   = ImeAction.Next,
-                keyboardActions = KeyboardActions(
-                    onNext = { focusManager.moveFocus(FocusDirection.Down) },
-                ),
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Text(
-                text  = stringResource(R.string.settings_section_data_source),
-                style = MorningType.Label,
-                color = morning.textMuted,
-            )
-
-            PlainField(
-                label       = stringResource(R.string.settings_field_database),
-                value       = uiState.databaseDraft,
-                onChange    = onDatabaseDraftChange,
-                imeAction   = ImeAction.Send,
-                keyboardActions = KeyboardActions(
-                    onSend = {
-                        if (canSave) {
-                            keyboard?.hide()
-                            focusManager.clearFocus()
-                            onSave()
-                        }
-                    },
-                ),
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Button(
-                onClick  = onSave,
-                enabled  = canSave,
-                shape    = RoundedCornerShape(12.dp),
-                colors   = ButtonDefaults.buttonColors(
-                    containerColor         = morning.accent,
-                    contentColor           = morning.surface,
-                    disabledContainerColor = morning.accent.copy(alpha = 0.3f),
-                    disabledContentColor   = morning.surface.copy(alpha = 0.5f),
-                ),
-                modifier = Modifier
+            // Header
+            Row(
+                modifier              = Modifier
                     .fillMaxWidth()
-                    .height(44.dp),
+                    .padding(top = 4.dp, bottom = 6.dp),
+                verticalAlignment     = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Text(text = stringResource(R.string.settings_button_save), style = MorningType.Title)
-            }
-
-            AnimatedVisibility(
-                visible = uiState.justSaved,
-                enter   = fadeIn(),
-                exit    = fadeOut(),
-            ) {
+                IconButton(
+                    onClick  = onBack,
+                    modifier = Modifier.size(36.dp),
+                ) {
+                    Icon(
+                        imageVector        = Icons.AutoMirrored.Rounded.ArrowBack,
+                        contentDescription = stringResource(R.string.cd_back),
+                        tint               = morning.textPrimary,
+                    )
+                }
                 Text(
-                    text     = stringResource(R.string.settings_feedback_saved),
-                    style    = MorningType.Body,
-                    color    = morning.success,
-                    modifier = Modifier.fillMaxWidth(),
+                    text  = stringResource(R.string.settings_title),
+                    style = MorningType.ScreenTitle,
+                    color = morning.textPrimary,
                 )
             }
 
-            // Notion connection test — only useful once a token + DB are saved.
-            val testEnabled = uiState.notionSavedLast4 != null &&
-                uiState.savedDatabaseId.isNotEmpty() &&
-                uiState.notionTest !is NotionTestResult.InProgress
+            // Intro
+            Text(
+                text     = stringResource(R.string.settings_intro),
+                style    = MorningType.BodyReadItalic.copy(fontSize = androidx.compose.ui.unit.TextUnit(14f, androidx.compose.ui.unit.TextUnitType.Sp)),
+                color    = morning.textSecondary,
+                modifier = Modifier.padding(horizontal = 2.dp, vertical = 4.dp),
+            )
 
+            // AI Provider
+            SectionLabel(text = stringResource(R.string.settings_section_provider))
+            ProviderRow(
+                selected         = uiState.selectedProvider,
+                selectedModelId  = uiState.selectedModelId,
+                onSelect         = onProviderChange,
+            )
+
+            // Model picker (vertical chips for the active provider)
+            ModelSection(
+                provider        = uiState.selectedProvider,
+                selectedModelId = uiState.selectedModelId,
+                onSelect        = onModelChange,
+            )
+
+            // Credentials
+            SectionLabel(
+                text     = stringResource(R.string.settings_section_credentials),
+                modifier = Modifier.padding(top = 14.dp),
+            )
+
+            // Active provider's API key — show only the matching field.
+            when (uiState.selectedProvider) {
+                ProviderOption.Gemini -> SettingsInput(
+                    label           = stringResource(R.string.settings_field_gemini),
+                    value           = uiState.geminiDraft,
+                    onValueChange   = onGeminiDraftChange,
+                    placeholder     = uiState.geminiSavedLast4?.let { "••••$it" }
+                                       ?: stringResource(R.string.settings_field_gemini),
+                    secret          = true,
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.None,
+                        imeAction      = ImeAction.Next,
+                    ),
+                    keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(androidx.compose.ui.focus.FocusDirection.Down) }),
+                )
+                ProviderOption.Claude -> SettingsInput(
+                    label           = stringResource(R.string.settings_field_claude),
+                    value           = uiState.claudeDraft,
+                    onValueChange   = onClaudeDraftChange,
+                    placeholder     = uiState.claudeSavedLast4?.let { "••••$it" }
+                                       ?: stringResource(R.string.settings_field_claude),
+                    secret          = true,
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.None,
+                        imeAction      = ImeAction.Next,
+                    ),
+                    keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(androidx.compose.ui.focus.FocusDirection.Down) }),
+                )
+            }
+
+            SettingsInput(
+                label           = stringResource(R.string.settings_field_notion),
+                value           = uiState.notionDraft,
+                onValueChange   = onNotionDraftChange,
+                placeholder     = uiState.notionSavedLast4?.let { "••••$it" }
+                                   ?: stringResource(R.string.settings_field_notion),
+                secret          = true,
+                keyboardOptions = KeyboardOptions(
+                    capitalization = KeyboardCapitalization.None,
+                    imeAction      = ImeAction.Next,
+                ),
+                keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(androidx.compose.ui.focus.FocusDirection.Down) }),
+            )
+
+            // Data source
+            SectionLabel(
+                text     = stringResource(R.string.settings_section_data_source),
+                modifier = Modifier.padding(top = 14.dp),
+            )
+            SettingsInput(
+                label           = stringResource(R.string.settings_field_database),
+                value           = uiState.databaseDraft,
+                onValueChange   = onDatabaseDraftChange,
+                placeholder     = stringResource(R.string.settings_field_database),
+                keyboardOptions = KeyboardOptions(
+                    capitalization = KeyboardCapitalization.None,
+                    imeAction      = ImeAction.Done,
+                ),
+                keyboardActions = KeyboardActions(onDone = {
+                    keyboard?.hide()
+                    focusManager.clearFocus()
+                }),
+            )
+
+            // Save area
+            Spacer(modifier = Modifier.height(6.dp))
+            SaveButton(
+                enabled  = hasChanges,
+                onClick  = {
+                    keyboard?.hide()
+                    focusManager.clearFocus()
+                    onSave()
+                },
+            )
+            if (uiState.justSaved) {
+                SavedFeedback()
+            }
             TextButton(
                 onClick  = onTestNotion,
-                enabled  = testEnabled,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.align(Alignment.CenterHorizontally),
             ) {
                 Text(
                     text  = stringResource(R.string.settings_button_test),
-                    style = MorningType.Body,
-                    color = if (testEnabled) morning.accent else morning.textMuted,
+                    style = MorningType.ButtonLabel,
+                    color = morning.accent,
                 )
             }
+            NotionTestStatus(uiState.notionTest)
 
-            when (val r = uiState.notionTest) {
-                NotionTestResult.InProgress -> Text(
-                    text  = stringResource(R.string.settings_test_in_progress),
-                    style = MorningType.Body,
-                    color = morning.textSecondary,
-                )
-                is NotionTestResult.Success -> Text(
-                    text  = stringResource(R.string.settings_test_success, r.taskCount),
-                    style = MorningType.Body,
-                    color = morning.success,
-                )
-                is NotionTestResult.Failure -> Text(
-                    text  = stringResource(R.string.settings_test_failure, r.message),
-                    style = MorningType.Body,
-                    color = morning.error,
-                )
-                null -> Unit
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Text(
-                text  = stringResource(R.string.settings_section_behavior),
-                style = MorningType.Label,
-                color = morning.textMuted,
+            // Behavior
+            SectionLabel(
+                text     = stringResource(R.string.settings_section_behavior),
+                modifier = Modifier.padding(top = 18.dp),
             )
-
-            AutoRunRow(
-                checked = uiState.autoRun,
-                onCheckedChange = onAutoRunChange,
-            )
-
-            DailyBriefingRow(
-                checked         = uiState.dailyBriefing,
-                onCheckedChange = onDailyBriefingChange,
-            )
-
-            // Time row visible only when the schedule is on — picker would have
-            // no effect otherwise, and an inert control reads as broken.
-            AnimatedVisibility(
-                visible = uiState.dailyBriefing,
-                enter   = fadeIn(),
-                exit    = fadeOut(),
-            ) {
-                Column {
-                    BriefingTimeRow(
-                        hour    = uiState.briefingHour,
-                        minute  = uiState.briefingMinute,
-                        onPick  = onBriefingTimeChange,
+            Column(modifier = Modifier.fillMaxWidth()) {
+                BehaviorDivider()
+                BehaviorToggleRow(
+                    title    = stringResource(R.string.settings_auto_run_label),
+                    sub      = stringResource(R.string.settings_behavior_auto_run_sub),
+                    on       = uiState.autoRun,
+                    onToggle = onAutoRunChange,
+                )
+                BehaviorDivider()
+                BehaviorToggleRow(
+                    title    = stringResource(R.string.settings_daily_briefing_label),
+                    sub      = stringResource(R.string.settings_behavior_daily_briefing_sub),
+                    on       = uiState.dailyBriefing,
+                    onToggle = onDailyBriefingChange,
+                )
+                BehaviorDivider()
+                if (uiState.dailyBriefing) {
+                    BehaviorValueRow(
+                        title   = stringResource(R.string.settings_briefing_time_label),
+                        sub     = stringResource(R.string.settings_behavior_briefing_time_sub),
+                        value   = formatTime(uiState.briefingHour, uiState.briefingMinute),
+                        onClick = { showTimePicker = true },
                     )
-                    TextButton(
-                        onClick  = onSendTestNotification,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text(
-                            text  = stringResource(R.string.settings_button_test_notification),
-                            style = MorningType.Body,
-                            color = morning.accent,
-                        )
-                    }
+                    BehaviorDivider()
                 }
             }
-        }
-    }
-}
 
-// Segmented two-chip row for picking the active LLM provider. Mirrors the
-// Home ModelPicker chip style for visual consistency. Persists immediately
-// via onSelect; the parent flips the visible API-key field accordingly.
-@Composable
-private fun ProviderRow(
-    selected: ProviderOption,
-    onSelect: (ProviderOption) -> Unit,
-) {
-    val morning = MaterialTheme.morning
-    Row(
-        modifier              = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        ProviderOption.entries.forEach { option ->
-            val isSelected = option == selected
-            val bg = if (isSelected) morning.accent.copy(alpha = 0.12f) else morning.surface
-            val borderColor = if (isSelected) morning.accent else morning.border
-            val labelColor = if (isSelected) morning.accent else morning.textPrimary
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier
-                    .weight(1f)
-                    .height(44.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(bg)
-                    .border(width = 1.dp, color = borderColor, shape = RoundedCornerShape(12.dp))
-                    .clickable { onSelect(option) },
-            ) {
-                Text(text = option.displayName, style = MorningType.Body, color = labelColor)
-            }
-        }
-    }
-}
-
-@Composable
-private fun AutoRunRow(
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-) {
-    SettingsToggleRow(
-        title    = stringResource(R.string.settings_auto_run_label),
-        subtitle = stringResource(R.string.settings_auto_run_help),
-        checked  = checked,
-        onCheckedChange = onCheckedChange,
-    )
-}
-
-@Composable
-private fun DailyBriefingRow(
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-) {
-    SettingsToggleRow(
-        title    = stringResource(R.string.settings_daily_briefing_label),
-        subtitle = stringResource(R.string.settings_daily_briefing_help),
-        checked  = checked,
-        onCheckedChange = onCheckedChange,
-    )
-}
-
-@Composable
-private fun SettingsToggleRow(
-    title: String,
-    subtitle: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-) {
-    val morning = MaterialTheme.morning
-    Row(
-        modifier          = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(text = title,    style = MorningType.Body, color = morning.textPrimary)
-            Text(text = subtitle, style = MorningType.Body, color = morning.textMuted)
-        }
-        Spacer(modifier = Modifier.width(12.dp))
-        Switch(
-            checked         = checked,
-            onCheckedChange = onCheckedChange,
-            colors = SwitchDefaults.colors(
-                checkedThumbColor    = morning.surface,
-                checkedTrackColor    = morning.accent,
-                uncheckedThumbColor  = morning.textMuted,
-                uncheckedTrackColor  = morning.surface,
-                uncheckedBorderColor = morning.border,
-            ),
-        )
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun BriefingTimeRow(
-    hour: Int,
-    minute: Int,
-    onPick: (Int, Int) -> Unit,
-) {
-    val morning = MaterialTheme.morning
-    var showPicker by remember { mutableStateOf(false) }
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .clickable { showPicker = true }
-            .padding(vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text     = stringResource(R.string.settings_briefing_time_label),
-            style    = MorningType.Body,
-            color    = morning.textPrimary,
-            modifier = Modifier.weight(1f),
-        )
-        Text(
-            text  = formatTime(hour, minute),
-            style = MorningType.Mono,
-            color = morning.accent,
-        )
-    }
-
-    if (showPicker) {
-        val state = rememberTimePickerState(
-            initialHour    = hour,
-            initialMinute  = minute,
-            is24Hour       = false,
-        )
-        AlertDialog(
-            onDismissRequest = { showPicker = false },
-            containerColor   = morning.surface,
-            title = {
-                Text(
-                    text  = stringResource(R.string.settings_time_picker_title),
-                    style = MorningType.Title,
-                    color = morning.textPrimary,
-                )
-            },
-            text = {
-                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    TimePicker(
-                        state  = state,
-                        colors = TimePickerDefaults.colors(
-                            clockDialColor             = ColorBackground,
-                            selectorColor              = morning.accent,
-                            containerColor             = morning.surface,
-                            periodSelectorBorderColor  = morning.border,
-                            clockDialSelectedContentColor   = morning.surface,
-                            clockDialUnselectedContentColor = morning.textPrimary,
-                            periodSelectorSelectedContainerColor   = morning.accent,
-                            periodSelectorUnselectedContainerColor = morning.surface,
-                            periodSelectorSelectedContentColor     = morning.surface,
-                            periodSelectorUnselectedContentColor   = morning.textSecondary,
-                            timeSelectorSelectedContainerColor     = morning.accent.copy(alpha = 0.2f),
-                            timeSelectorUnselectedContainerColor   = ColorBackground,
-                            timeSelectorSelectedContentColor       = morning.accent,
-                            timeSelectorUnselectedContentColor     = morning.textPrimary,
-                        ),
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    onPick(state.hour, state.minute)
-                    showPicker = false
-                }) {
+            // Send test notification (only when daily briefing is on, mirrors the
+            // worker visibility — no point posting from a feature that's off).
+            if (uiState.dailyBriefing) {
+                Spacer(modifier = Modifier.height(8.dp))
+                TextButton(
+                    onClick  = onSendTestNotification,
+                    modifier = Modifier.align(Alignment.CenterHorizontally),
+                ) {
                     Text(
-                        text  = stringResource(R.string.settings_time_picker_confirm),
-                        style = MorningType.Body,
+                        text  = stringResource(R.string.settings_button_test_notification),
+                        style = MorningType.ButtonLabel,
                         color = morning.accent,
                     )
                 }
-            },
-            dismissButton = {
-                TextButton(onClick = { showPicker = false }) {
-                    Text(
-                        text  = stringResource(R.string.settings_time_picker_cancel),
-                        style = MorningType.Body,
-                        color = morning.textMuted,
-                    )
-                }
+            }
+        }
+    }
+
+    if (showTimePicker) {
+        BriefingTimePickerDialog(
+            initialHour   = uiState.briefingHour,
+            initialMinute = uiState.briefingMinute,
+            onDismiss     = { showTimePicker = false },
+            onConfirm     = { hour, minute ->
+                onBriefingTimeChange(hour, minute)
+                showTimePicker = false
             },
         )
     }
 }
 
-// 12-hour clock with AM/PM — matches the picker's default and Luna's locale.
+// --- Section pieces ------------------------------------------------------
+
+@Composable
+private fun SectionLabel(text: String, modifier: Modifier = Modifier) {
+    val morning = MaterialTheme.morning
+    Text(
+        text     = text,
+        style    = MorningType.LabelMono.copy(letterSpacing = androidx.compose.ui.unit.TextUnit(2f, androidx.compose.ui.unit.TextUnitType.Sp)),
+        color    = morning.textMuted,
+        modifier = modifier.padding(top = 4.dp, bottom = 6.dp),
+    )
+}
+
+@Composable
+private fun ProviderRow(
+    selected: ProviderOption,
+    selectedModelId: String,
+    onSelect: (ProviderOption) -> Unit,
+) {
+    val geminiActive = selected == ProviderOption.Gemini
+    val claudeActive = selected == ProviderOption.Claude
+
+    val geminiTile = ProviderTileData(
+        id      = "gemini", name = "Gemini", glyph = "G",
+        brandBg = Color(0xFF4285F4), brandFg = Color.White,
+        activeModelLabel = if (geminiActive) selectedModelId else GeminiModelOption.Default.id,
+        extraModelCount  = GeminiModelOption.entries.size - 1,
+    )
+    val claudeTile = ProviderTileData(
+        id      = "claude", name = "Claude", glyph = "C",
+        brandBg = Color(0xFFD97757), brandFg = Color.White,
+        activeModelLabel = if (claudeActive) selectedModelId else ClaudeModelOption.Default.id,
+        extraModelCount  = ClaudeModelOption.entries.size - 1,
+    )
+    val openaiTile = ProviderTileData(
+        id      = "openai", name = "OpenAI", glyph = "O",
+        brandBg = Color(0xFF0A0A0A), brandFg = Color.White,
+        activeModelLabel = null,                 // → "Coming soon" caption
+        extraModelCount  = 0,
+        disabled         = true,
+    )
+
+    LazyRow(
+        modifier              = Modifier
+            .fillMaxWidth()
+            .padding(top = 4.dp, bottom = 12.dp),
+        contentPadding        = PaddingValues(horizontal = 0.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        item {
+            ProviderTile(
+                data     = geminiTile,
+                selected = geminiActive,
+                onClick  = { onSelect(ProviderOption.Gemini) },
+            )
+        }
+        item {
+            ProviderTile(
+                data     = claudeTile,
+                selected = claudeActive,
+                onClick  = { onSelect(ProviderOption.Claude) },
+            )
+        }
+        item {
+            ProviderTile(
+                data     = openaiTile,
+                selected = false,
+                onClick  = {},          // disabled — never fires anyway
+            )
+        }
+    }
+}
+
+@Composable
+private fun ModelSection(
+    provider: ProviderOption,
+    selectedModelId: String,
+    onSelect: (String) -> Unit,
+) {
+    val morning = MaterialTheme.morning
+    val options = when (provider) {
+        ProviderOption.Gemini -> GeminiModelOption.entries.map { it.id to it.tagline }
+        ProviderOption.Claude -> ClaudeModelOption.entries.map { it.id to it.tagline }
+    }
+    Row(
+        modifier              = Modifier
+            .fillMaxWidth()
+            .padding(top = 4.dp, bottom = 6.dp),
+        verticalAlignment     = Alignment.Bottom,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(
+            text  = stringResource(R.string.section_model),
+            style = MorningType.LabelMono.copy(letterSpacing = androidx.compose.ui.unit.TextUnit(2f, androidx.compose.ui.unit.TextUnitType.Sp)),
+            color = morning.textMuted,
+        )
+        Text(
+            text  = stringResource(R.string.settings_model_options_meta, provider.displayName.lowercase(), options.size),
+            style = MorningType.MetaMono,
+            color = morning.textMuted,
+        )
+    }
+    Column(
+        modifier            = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        options.forEach { (id, note) ->
+            ModelChip(
+                label    = id,
+                note     = note,
+                selected = id == selectedModelId,
+                onClick  = { onSelect(id) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun SaveButton(enabled: Boolean, onClick: () -> Unit) {
+    val morning = MaterialTheme.morning
+    val bg   = if (enabled) morning.accent else morning.textMuted.copy(alpha = 0.18f)
+    val fg   = if (enabled) morning.onAccent else morning.textMuted
+
+    Box(
+        modifier         = Modifier
+            .fillMaxWidth()
+            .height(46.dp)
+            .let {
+                if (enabled) it.shadow(
+                    elevation    = 12.dp,
+                    shape        = RoundedCornerShape(14.dp),
+                    spotColor    = morning.accent,
+                    ambientColor = morning.accent,
+                ) else it
+            }
+            .clip(RoundedCornerShape(14.dp))
+            .background(bg)
+            .clickable(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text  = stringResource(R.string.settings_button_save),
+            style = MorningType.ButtonLabel.copy(fontSize = androidx.compose.ui.unit.TextUnit(14f, androidx.compose.ui.unit.TextUnitType.Sp)),
+            color = fg,
+        )
+    }
+}
+
+@Composable
+private fun SavedFeedback() {
+    val morning = MaterialTheme.morning
+    Row(
+        modifier              = Modifier.fillMaxWidth(),
+        verticalAlignment     = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
+    ) {
+        Icon(
+            imageVector        = Icons.Rounded.Check,
+            contentDescription = null,
+            tint               = morning.success,
+            modifier           = Modifier.size(14.dp),
+        )
+        Spacer(modifier = Modifier.size(6.dp))
+        Text(
+            text  = stringResource(R.string.settings_feedback_saved),
+            style = MorningType.ButtonLabel,
+            color = morning.success,
+        )
+    }
+}
+
+@Composable
+private fun NotionTestStatus(test: NotionTestResult?) {
+    if (test == null) return
+    val morning = MaterialTheme.morning
+    val (text, color) = when (test) {
+        is NotionTestResult.InProgress -> stringResource(R.string.settings_test_in_progress) to morning.textSecondary
+        is NotionTestResult.Success    -> stringResource(R.string.settings_test_success, test.taskCount) to morning.success
+        is NotionTestResult.Failure    -> stringResource(R.string.settings_test_failure, test.message) to morning.error
+    }
+    Text(
+        text      = text,
+        style     = MorningType.MetaMono.copy(fontSize = androidx.compose.ui.unit.TextUnit(11f, androidx.compose.ui.unit.TextUnitType.Sp)),
+        color     = color,
+        textAlign = TextAlign.Center,
+        modifier  = Modifier.fillMaxWidth(),
+    )
+}
+
 private fun formatTime(hour: Int, minute: Int): String {
     val period = if (hour < 12) "AM" else "PM"
     val h12 = when {
-        hour == 0       -> 12
-        hour > 12       -> hour - 12
-        else            -> hour
+        hour == 0  -> 12
+        hour > 12  -> hour - 12
+        else       -> hour
     }
     return "%d:%02d %s".format(h12, minute, period)
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SecretField(
-    label: String,
-    draft: String,
-    savedLast4: String?,
-    onChange: (String) -> Unit,
-    imeAction: ImeAction = ImeAction.Done,
-    keyboardActions: KeyboardActions = KeyboardActions.Default,
+private fun BriefingTimePickerDialog(
+    initialHour: Int,
+    initialMinute: Int,
+    onDismiss: () -> Unit,
+    onConfirm: (Int, Int) -> Unit,
 ) {
     val morning = MaterialTheme.morning
-    var focused by remember { mutableStateOf(false) }
-    // When the user has a stored value but hasn't typed anything yet, paint
-    // a literal "****abcd" inside the field so the saved state is visible at
-    // a glance. Drop it the moment the field gains focus so typing isn't
-    // appended to the mask.
-    val showSavedMask = draft.isEmpty() && !focused && !savedLast4.isNullOrEmpty()
-    val display = if (showSavedMask) "****$savedLast4" else draft
-
-    OutlinedTextField(
-        value         = display,
-        onValueChange = onChange,
-        label         = { Text(label, style = MorningType.Body) },
-        singleLine    = true,
-        visualTransformation = if (showSavedMask) VisualTransformation.None else PasswordVisualTransformation(),
-        keyboardOptions = KeyboardOptions(
-            capitalization     = KeyboardCapitalization.None,
-            autoCorrectEnabled = false,
-            imeAction          = imeAction,
-        ),
-        keyboardActions = keyboardActions,
-        colors = OutlinedTextFieldDefaults.colors(
-            focusedTextColor        = morning.textPrimary,
-            unfocusedTextColor      = morning.textPrimary,
-            focusedBorderColor      = morning.accent,
-            unfocusedBorderColor    = morning.border,
-            focusedLabelColor       = morning.accent,
-            unfocusedLabelColor     = morning.textSecondary,
-            cursorColor             = morning.accent,
-            focusedContainerColor   = morning.surface,
-            unfocusedContainerColor = morning.surface,
-        ),
-        modifier = Modifier
-            .fillMaxWidth()
-            .onFocusChanged { focused = it.isFocused },
+    val state = rememberTimePickerState(
+        initialHour   = initialHour,
+        initialMinute = initialMinute,
+        is24Hour      = false,
+    )
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor   = morning.surface,
+        title = {
+            Text(
+                text  = stringResource(R.string.settings_time_picker_title),
+                style = MorningType.SectionHeading,
+                color = morning.textPrimary,
+            )
+        },
+        text = {
+            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                TimePicker(
+                    state  = state,
+                    colors = TimePickerDefaults.colors(
+                        clockDialColor             = morning.background,
+                        selectorColor              = morning.accent,
+                        containerColor             = morning.surface,
+                        periodSelectorBorderColor  = morning.cardEdge,
+                        clockDialSelectedContentColor   = morning.onAccent,
+                        clockDialUnselectedContentColor = morning.textPrimary,
+                        periodSelectorSelectedContainerColor   = morning.accent,
+                        periodSelectorUnselectedContainerColor = morning.surface,
+                        periodSelectorSelectedContentColor     = morning.onAccent,
+                        periodSelectorUnselectedContentColor   = morning.textSecondary,
+                        timeSelectorSelectedContainerColor     = morning.accentSoft,
+                        timeSelectorUnselectedContainerColor   = morning.background,
+                        timeSelectorSelectedContentColor       = morning.accent,
+                        timeSelectorUnselectedContentColor     = morning.textPrimary,
+                    ),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(state.hour, state.minute) }) {
+                Text(
+                    text  = stringResource(R.string.settings_time_picker_confirm),
+                    style = MorningType.ButtonLabel,
+                    color = morning.accent,
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(
+                    text  = stringResource(R.string.settings_time_picker_cancel),
+                    style = MorningType.ButtonLabel,
+                    color = morning.textMuted,
+                )
+            }
+        },
     )
 }
 
-@Composable
-private fun PlainField(
-    label: String,
-    value: String,
-    onChange: (String) -> Unit,
-    imeAction: ImeAction = ImeAction.Done,
-    keyboardActions: KeyboardActions = KeyboardActions.Default,
-) {
-    val morning = MaterialTheme.morning
-    OutlinedTextField(
-        value         = value,
-        onValueChange = onChange,
-        label         = { Text(label, style = MorningType.Body) },
-        singleLine    = true,
-        keyboardOptions = KeyboardOptions(
-            capitalization     = KeyboardCapitalization.None,
-            autoCorrectEnabled = false,
-            imeAction          = imeAction,
-        ),
-        keyboardActions = keyboardActions,
-        colors = OutlinedTextFieldDefaults.colors(
-            focusedTextColor        = morning.textPrimary,
-            unfocusedTextColor      = morning.textPrimary,
-            focusedBorderColor      = morning.accent,
-            unfocusedBorderColor    = morning.border,
-            focusedLabelColor       = morning.accent,
-            unfocusedLabelColor     = morning.textSecondary,
-            cursorColor             = morning.accent,
-            focusedContainerColor   = morning.surface,
-            unfocusedContainerColor = morning.surface,
-        ),
-        modifier = Modifier.fillMaxWidth(),
-    )
-}
+// --- Previews -------------------------------------------------------------
 
-@Preview(showBackground = true, backgroundColor = 0xFF0A0A0F, name = "Settings — empty")
+@Preview(showBackground = true, backgroundColor = 0xFFE5E1DD, name = "Settings – empty (Light)")
 @Composable
 private fun SettingsEmptyPreview() {
     MorningAgentTheme {
         SettingsScreenContent(
-            uiState               = SettingsUiState(),
-            onGeminiDraftChange   = {},
-            onNotionDraftChange   = {},
-            onDatabaseDraftChange = {},
+            uiState                = SettingsUiState(selectedModelId = GeminiModelOption.Default.id),
             onProviderChange       = {},
+            onModelChange          = {},
+            onGeminiDraftChange    = {},
             onClaudeDraftChange    = {},
+            onNotionDraftChange    = {},
+            onDatabaseDraftChange  = {},
             onAutoRunChange        = {},
             onDailyBriefingChange  = {},
             onBriefingTimeChange   = { _, _ -> },
             onSendTestNotification = {},
-            onSave                 = {},
             onTestNotion           = {},
+            onSave                 = {},
             onBack                 = {},
         )
     }
 }
 
-@Preview(showBackground = true, backgroundColor = 0xFF0A0A0F, name = "Settings — saved")
+@Preview(showBackground = true, backgroundColor = 0xFFE5E1DD, name = "Settings – saved")
 @Composable
 private fun SettingsSavedPreview() {
     MorningAgentTheme {
         SettingsScreenContent(
-            uiState = SettingsUiState(
+            uiState                = SettingsUiState(
+                selectedProvider = ProviderOption.Claude,
+                selectedModelId  = ClaudeModelOption.Sonnet.id,
                 geminiSavedLast4 = "k7Qa",
+                claudeSavedLast4 = "j3xP",
                 notionSavedLast4 = "9F2c",
                 savedDatabaseId  = "abc123def456789012345678901234ab",
                 databaseDraft    = "abc123def456789012345678901234ab",
-                justSaved        = true,
+                dailyBriefing    = true,
             ),
-            onGeminiDraftChange   = {},
-            onNotionDraftChange   = {},
-            onDatabaseDraftChange = {},
             onProviderChange       = {},
+            onModelChange          = {},
+            onGeminiDraftChange    = {},
             onClaudeDraftChange    = {},
+            onNotionDraftChange    = {},
+            onDatabaseDraftChange  = {},
             onAutoRunChange        = {},
             onDailyBriefingChange  = {},
             onBriefingTimeChange   = { _, _ -> },
             onSendTestNotification = {},
-            onSave                 = {},
             onTestNotion           = {},
-            onBack                 = {},
-        )
-    }
-}
-
-@Preview(showBackground = true, backgroundColor = 0xFF0A0A0F, name = "Settings — typing")
-@Composable
-private fun SettingsTypingPreview() {
-    MorningAgentTheme {
-        SettingsScreenContent(
-            uiState = SettingsUiState(
-                geminiDraft   = "AIzaSy_PreviewKey",
-                databaseDraft = "https://www.notion.so/Tasks-abc123def456789012345678901234ab",
-            ),
-            onGeminiDraftChange   = {},
-            onNotionDraftChange   = {},
-            onDatabaseDraftChange = {},
-            onProviderChange       = {},
-            onClaudeDraftChange    = {},
-            onAutoRunChange        = {},
-            onDailyBriefingChange  = {},
-            onBriefingTimeChange   = { _, _ -> },
-            onSendTestNotification = {},
             onSave                 = {},
-            onTestNotion           = {},
             onBack                 = {},
         )
     }

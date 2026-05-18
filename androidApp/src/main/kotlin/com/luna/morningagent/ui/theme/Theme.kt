@@ -2,28 +2,47 @@ package com.luna.morningagent.ui.theme
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-
-private val MorningColorScheme = darkColorScheme(
-    primary          = ColorAccent,
-    background       = ColorBackground,
-    surface          = ColorSurface,
-    surfaceVariant   = ColorSurfaceRaised,
-    error            = ColorError,
-    onPrimary        = ColorBackground,
-    onBackground     = ColorTextPrimary,
-    onSurface        = ColorTextPrimary,
-    onSurfaceVariant = ColorTextSecondary,
-    outline          = ColorBorder,
-)
+import androidx.compose.runtime.remember
+import java.time.LocalDateTime
 
 @Composable
-fun MorningAgentTheme(content: @Composable () -> Unit) {
-    CompositionLocalProvider(LocalMorningColors provides LocalMorningColors.current) {
-        MaterialTheme(
-            colorScheme = MorningColorScheme,
-            content     = content,
+fun MorningAgentTheme(
+    theme: MorningTheme = remember { resolveTheme(LocalDateTime.now()) },
+    content: @Composable () -> Unit,
+) {
+    val palette = theme.palette
+    val colorScheme = if (palette.isLight) {
+        lightColorScheme(
+            primary          = palette.accent,
+            background       = palette.background,
+            surface          = palette.surface,
+            surfaceVariant   = palette.surfaceRaised,
+            error            = palette.error,
+            onPrimary        = palette.onAccent,
+            onBackground     = palette.textPrimary,
+            onSurface        = palette.textPrimary,
+            onSurfaceVariant = palette.textSecondary,
+            outline          = palette.cardEdge,
         )
+    } else {
+        darkColorScheme(
+            primary          = palette.accent,
+            background       = palette.background,
+            surface          = palette.surface,
+            surfaceVariant   = palette.surfaceRaised,
+            error            = palette.error,
+            onPrimary        = palette.onAccent,
+            onBackground     = palette.textPrimary,
+            onSurface        = palette.textPrimary,
+            onSurfaceVariant = palette.textSecondary,
+            outline          = palette.cardEdge,
+        )
+    }
+
+    CompositionLocalProvider(LocalMorningTheme provides theme) {
+        MaterialTheme(colorScheme = colorScheme, content = content)
     }
 }

@@ -8,10 +8,22 @@
     <string name="greeting_weekend">Slow day, Luna</string>
     <string name="agent_status_label">AGENT STATUS</string>
     <string name="agent_status_active">Active</string>
+    <string name="agent_status_ready">Ready</string>
+    <string name="agent_status_resting">Resting</string>
+    <string name="agent_status_paused">Paused</string>
     <string name="agent_status_next_run">Next run</string>
     <string name="btn_run_now">Run Now</string>
+    <string name="btn_start_the_day">Start the Day</string>
+    <string name="btn_refresh_briefing">Refresh Briefing</string>
+    <string name="btn_plan_next_week">Plan Next Week</string>
     <string name="section_todays_briefing">TODAY\'S BRIEFING</string>
+    <string name="section_your_briefing">YOUR BRIEFING</string>
+    <string name="section_unfinished">UNFINISHED</string>
+    <string name="section_reflection">REFLECTION</string>
     <string name="section_tasks">TASKS</string>
+    <string name="section_focus_today">FOCUS TODAY</string>
+    <string name="section_loose_ends">LOOSE ENDS</string>
+    <string name="section_goals_next_week">GOALS FOR NEXT WEEK</string>
     <string name="label_generated">GENERATED</string>
     <string name="label_items">ITEMS</string>
     <string name="label_tip">TIP</string>
@@ -55,4 +67,57 @@
     <string name="notification_sample_body">Sample briefing — start with the deepest task before email tries to steal your morning.</string>
     <string name="settings_button_test_notification">Send test notification</string>
     <string name="cd_back">Back</string>
+
+    <!-- v4 — per-slot copy. 5 slots × 5 fields. Mirrors design/themes.jsx SLOTS verbatim. -->
+
+    <!-- Dawn (05:00–08:59) -->
+    <string name="greeting_dawn">Good morning, Luna.</string>
+    <string name="sub_dawn">Fresh start. Three things matter today.</string>
+    <string name="runlabel_dawn">Begin the day</string>
+    <string name="status_dawn">Briefing ready</string>
+    <string name="quote_dawn">Pick one win this morning, then build momentum. Start with the SDK doc — your mind is sharpest now, and it unblocks two downstream tasks.</string>
+
+    <!-- Midday (09:00–11:59) -->
+    <string name="greeting_midday">Mid-morning, Luna.</string>
+    <string name="sub_midday">Halfway through your sharpest hours.</string>
+    <string name="runlabel_midday">Refresh briefing</string>
+    <string name="status_midday">Last run 09:02</string>
+    <string name="quote_midday">Two of three still untouched. Close the PR before lunch — Maya is online, and a quick approval lets the next deploy go out on time.</string>
+
+    <!-- Afternoon (12:00–16:59) -->
+    <string name="greeting_afternoon_v4">Good afternoon, Luna.</string>
+    <string name="sub_afternoon">Tidy the loose threads before dusk.</string>
+    <string name="runlabel_afternoon">Refresh briefing</string>
+    <string name="status_afternoon">Resting</string>
+    <string name="quote_afternoon">Don\'t start anything new. Close the PR review and the design replies — both are quick, and you\'ll feel lighter by four.</string>
+
+    <!-- Evening (17:00–20:59) -->
+    <string name="greeting_evening_v4">Good evening, Luna.</string>
+    <string name="sub_evening">Wind down. Tomorrow is set.</string>
+    <string name="runlabel_evening">Confirm tomorrow</string>
+    <string name="status_evening">Set for 09:00</string>
+    <string name="quote_evening">Tomorrow is set — three high-priority items, queued. The SDK doc has the longest tail; everything else fits around it.</string>
+
+    <!-- Night (21:00–04:59) -->
+    <string name="greeting_night">It\'s late, Luna.</string>
+    <string name="sub_night">Sleep on it. The agent has tomorrow.</string>
+    <string name="runlabel_night">Plan tomorrow</string>
+    <string name="status_night">Quiet hours</string>
+    <string name="quote_night">Put it down. You closed six of nine today, including the auth refactor. The doc can wait one more sleep.</string>
+
+    <!-- v4 — new section + UI labels. -->
+    <string name="section_briefing">BRIEFING</string>
+    <string name="section_today">Today</string>
+    <string name="label_n_items">%1$d ITEMS</string>
+    <string name="footer_powered_by_v4">Powered by Gemini · Notion MCP</string>
+    <string name="label_next_run">Next run</string>
+    <string name="action_open_task">Open task</string>
+    <string name="wordmark_agent">Agent</string>
+
+    <!-- v4 Settings -->
+    <string name="settings_provider_coming_soon">Coming soon</string>
+    <string name="settings_model_options_meta">%1$s · %2$d options</string>
+    <string name="settings_behavior_auto_run_sub">Run the agent as soon as you open the app.</string>
+    <string name="settings_behavior_daily_briefing_sub">Push the briefing when it\'s ready.</string>
+    <string name="settings_behavior_briefing_time_sub">Wakes the agent and delivers the briefing.</string>
 </resources>

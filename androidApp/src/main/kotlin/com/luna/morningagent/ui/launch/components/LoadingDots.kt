@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -18,13 +19,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import com.luna.morningagent.ui.theme.ColorTextMuted
 import com.luna.morningagent.ui.theme.MorningAgentTheme
+import com.luna.morningagent.ui.theme.morning
 
 // Three dots with sequential fade — 200ms offset each
 @Composable
 fun LoadingDots(modifier: Modifier = Modifier) {
     val infiniteTransition = rememberInfiniteTransition(label = "dots")
+    val muted = MaterialTheme.morning.textMuted
 
     Row(
         modifier            = modifier,
@@ -45,7 +47,7 @@ fun LoadingDots(modifier: Modifier = Modifier) {
                 modifier = Modifier
                     .size(4.dp)
                     .clip(CircleShape)
-                    .background(ColorTextMuted.copy(alpha = alpha)),
+                    .background(muted.copy(alpha = alpha)),
             )
         }
     }

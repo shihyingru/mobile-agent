@@ -1,33 +1,29 @@
 package com.luna.morningagent.ui.home
 
 import android.app.Application
-import androidx.annotation.StringRes
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.luna.morningagent.R
 import com.luna.morningagent.data.AgentConfigMissingException
 import com.luna.morningagent.data.AgentNetworkException
 import com.luna.morningagent.data.AgentRepository
 import com.luna.morningagent.data.agent.BriefingGenerator
 import com.luna.morningagent.data.agent.ClaudeBriefingClient
-import com.luna.morningagent.data.agent.ClaudeModelOption
 import com.luna.morningagent.data.agent.GeminiBriefingClient
-import com.luna.morningagent.data.agent.GeminiModelOption
 import com.luna.morningagent.data.agent.ProviderOption
 import com.luna.morningagent.data.model.Briefing
 import com.luna.morningagent.data.notion.NotionRestClient
 import com.luna.morningagent.data.secure.TokenStore
-import com.luna.morningagent.ui.home.components.ModelChoice
-import java.time.DayOfWeek
-import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlin.time.Clock
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toLocalDateTime
 
 sealed interface HomeUiState {
     // attempt/total surface the retry hint in the UI: when attempt > 1 we show
@@ -61,24 +57,6 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     var uiState by mutableStateOf<HomeUiState>(HomeUiState.Empty)
         private set
 
-    // Selected model id for the active provider (e.g. "gemini-2.5-flash" or
-    // "claude-sonnet-4-6"). The Home picker reads this and writes through
-    // setModel(); the agent layer resolves it on each generate() call so the
-    // next Run Now picks up today's choice.
-    var selectedModelId by mutableStateOf(currentProviderModelId())
-        private set
-
-    // Picker option list for the active provider. Recomputed when the provider
-    // flips in Settings — HomeScreen's refreshClock() seam catches the change.
-    var modelOptions: List<ModelChoice> by mutableStateOf(buildModelOptions(activeProvider()))
-        private set
-
-    // Drives the picker's visibility on Home — no key for the active provider,
-    // no picker. Read fresh each recomposition so it flips on after the user
-    // saves a key in Settings.
-    val isProviderConfigured: Boolean
-        get() = !activeProviderKey().isNullOrEmpty()
-
     private fun activeProvider(): ProviderOption =
         ProviderOption.fromId(tokenStore.getSelectedProvider())
 
@@ -87,31 +65,13 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         ProviderOption.Claude -> tokenStore.getClaudeKey()
     }
 
-    private fun currentProviderModelId(): String = when (activeProvider()) {
-        ProviderOption.Gemini -> tokenStore.getGeminiModel()
-        ProviderOption.Claude -> tokenStore.getClaudeModel()
-    }
-
-    private fun buildModelOptions(provider: ProviderOption): List<ModelChoice> =
-        when (provider) {
-            ProviderOption.Gemini -> GeminiModelOption.entries.map {
-                ModelChoice(id = it.id, displayName = it.displayName, tagline = it.tagline)
-            }
-            ProviderOption.Claude -> ClaudeModelOption.entries.map {
-                ModelChoice(id = it.id, displayName = it.displayName, tagline = it.tagline)
-            }
-        }
-
     // Header strings derived from the device clock. Backed by mutableStateOf + a
-    // viewModelScope ticker so labels auto-flip across midnight or the picked
-    // briefing time without waiting for a recomposition trigger. HomeScreen also
-    // calls refreshClock() on entry so Settings-side time changes land instantly.
+    // viewModelScope ticker so labels auto-flip across minute boundaries without
+    // waiting for a recomposition trigger. HomeScreen also calls refreshClock()
+    // on entry so Settings-side time changes land instantly. Greeting copy is
+    // now slot-driven (slotCopy()) — the VM no longer chooses string IDs.
 
-    @get:StringRes
-    var greetingRes: Int by mutableStateOf(greetingResFor(LocalDateTime.now()))
-        private set
-
-    var headerSubtitle: String by mutableStateOf(formatHeaderSubtitle(LocalDate.now()))
+    var headerDateLine: String by mutableStateOf(formatDateLine(LocalDateTime.now()))
         private set
 
     // "today 9:00 PM" / "tomorrow 7:30 AM" depending on the picked hour/minute and
@@ -121,12 +81,29 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         private set
 
     init {
-        // Auto-run on first composition when the user has opted in AND keys are
-        // configured. Otherwise stay Empty so they can read Settings or tap Run Now.
-        if (tokenStore.getAutoRun() && hasMinimalConfig()) {
+        // Hydrate from the on-disk cache first so a cold launch shows the last
+        // briefing the worker (or a previous Run Now) wrote, not an Empty state.
+        // If that cached briefing is from today, skip the auto-run — there's no
+        // point burning another Gemini call to regenerate the same data.
+        val cached = repo.getLastBriefing()
+        val cachedIsFromToday = cached?.let { isFromToday(it) } == true
+        if (cached != null) {
+            uiState = HomeUiState.Success(cached)
+        }
+
+        // Auto-run on first composition only when the user has opted in AND keys
+        // are configured AND the cache is stale (older than today, or absent).
+        if (!cachedIsFromToday && tokenStore.getAutoRun() && hasMinimalConfig()) {
             runNow()
         }
         startClockTicker()
+    }
+
+    private fun isFromToday(briefing: Briefing): Boolean {
+        val tz = TimeZone.currentSystemDefault()
+        val briefingDate = briefing.generatedAt.toLocalDateTime(tz).date
+        val today = Clock.System.now().toLocalDateTime(tz).date
+        return briefingDate == today
     }
 
     // Pulls fresh clock + provider values into the state-backed fields. Called by
@@ -135,11 +112,8 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     // immediately without waiting for the next tick.
     fun refreshClock() {
         val now = LocalDateTime.now()
-        greetingRes    = greetingResFor(now)
-        headerSubtitle = formatHeaderSubtitle(now.toLocalDate())
+        headerDateLine = formatDateLine(now)
         nextRunLabel   = computeNextRunLabel(now)
-        modelOptions   = buildModelOptions(activeProvider())
-        selectedModelId = currentProviderModelId()
     }
 
     private fun startClockTicker() {
@@ -158,14 +132,6 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             hour   = tokenStore.getDailyBriefingHour(),
             minute = tokenStore.getDailyBriefingMinute(),
         )
-    }
-
-    fun setModel(id: String) {
-        when (activeProvider()) {
-            ProviderOption.Gemini -> tokenStore.saveGeminiModel(id)
-            ProviderOption.Claude -> tokenStore.saveClaudeModel(id)
-        }
-        selectedModelId = id
     }
 
     fun runNow() {
@@ -198,29 +164,14 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     }
 }
 
-private val HEADER_SUBTITLE_FORMAT: DateTimeFormatter =
-    DateTimeFormatter.ofPattern("EEEE · MMMM d", Locale.ENGLISH)
+// v4 date-line format: "FRIDAY · MAY 15 · 2:23 PM" — uppercase day, abbreviated
+// month, day, 12-hour time + AM/PM. Locale.ENGLISH keeps the wording stable on
+// zh-locale phones; uppercase happens in Kotlin (Locale-aware via the formatter).
+private val DATE_LINE_FORMAT: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("EEEE · MMM d · h:mm a", Locale.ENGLISH)
 
-internal fun formatHeaderSubtitle(today: LocalDate): String =
-    today.format(HEADER_SUBTITLE_FORMAT)
-
-// Picks the greeting string id from the device clock. Buckets per CLAUDE.md:
-//   • Sat/Sun any hour          → weekend
-//   • Mon–Fri 05:00–11:59       → morning
-//   • Mon–Fri 12:00–17:59       → afternoon
-//   • Mon–Fri 18:00–04:59       → evening
-// Late-night absorbs into evening rather than spawning a fifth bucket — keeps the
-// vibe palette tight and matches the four words Luna asked for.
-@StringRes
-internal fun greetingResFor(now: LocalDateTime): Int {
-    val weekend = now.dayOfWeek == DayOfWeek.SATURDAY || now.dayOfWeek == DayOfWeek.SUNDAY
-    if (weekend) return R.string.greeting_weekend
-    return when (now.hour) {
-        in 5..11  -> R.string.greeting_morning
-        in 12..17 -> R.string.greeting_afternoon
-        else      -> R.string.greeting_evening
-    }
-}
+internal fun formatDateLine(now: LocalDateTime): String =
+    now.format(DATE_LINE_FORMAT).uppercase(Locale.ENGLISH)
 
 // Formats a 12-hour clock + AM/PM with a `today`/`tomorrow` prefix. Splits today
 // vs tomorrow on equality so a target exactly at `now` still reads "today" — the
