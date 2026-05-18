@@ -114,6 +114,11 @@
     <string name="action_open_task">Open task</string>
     <string name="wordmark_agent">Agent</string>
 
+    <!-- Shared posts (ACTION_SEND share intent → Notion mirror) -->
+    <string name="share_saved_toast">Saved to Morning Agent</string>
+    <string name="share_saved_pending_toast">Saved · finish Notion setup in app to sync</string>
+    <string name="share_saved_failed_toast">Couldn\'t save — try again</string>
+
     <!-- v4 Settings -->
     <string name="settings_provider_coming_soon">Coming soon</string>
     <string name="settings_model_options_meta">%1$s · %2$d options</string>

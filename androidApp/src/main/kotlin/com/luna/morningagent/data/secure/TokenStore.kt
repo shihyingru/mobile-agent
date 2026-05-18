@@ -14,6 +14,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.encodeToString
 
 /**
  * Token + preferences store backed by Preferences DataStore with per-value
@@ -143,33 +144,62 @@ class TokenStore(context: Context) {
         }
     }
 
+    // --- Shared posts (Threads share intent → Notion mirror) -----------------
+    // Local JSON cache is the source of truth; Notion is a mirror that may lag
+    // (pendingSync=true on cached posts when DB ID is unset or page-create fails).
+    // Taxonomy seeds with ["Misc"] and grows organically as the agent suggests
+    // new categories on save.
+
+    fun saveSharedPostsDbId(id: String) = writeString(KEY_SHARED_POSTS_DB_ID, id)
+    fun getSharedPostsDbId(): String? = readString(KEY_SHARED_POSTS_DB_ID)
+
+    fun saveSharedPostsTaxonomy(categories: List<String>) =
+        writeString(KEY_SHARED_POSTS_TAXONOMY, taxonomyJson.encodeToString(categories))
+    fun getSharedPostsTaxonomy(): List<String> {
+        val raw = readString(KEY_SHARED_POSTS_TAXONOMY) ?: return DEFAULT_TAXONOMY
+        return runCatching { taxonomyJson.decodeFromString<List<String>>(raw) }.getOrDefault(DEFAULT_TAXONOMY)
+    }
+
+    fun saveSharedPostsCacheJson(json: String) = writeString(KEY_SHARED_POSTS_CACHE, json)
+    fun getSharedPostsCacheJson(): String? = readString(KEY_SHARED_POSTS_CACHE)
+
     companion object {
-        private const val KEY_GEMINI          = "gemini_api_key"
-        private const val KEY_NOTION          = "notion_token"
-        private const val KEY_NOTION_DB       = "notion_database_id"
-        private const val KEY_AUTO_RUN        = "auto_run_on_launch"
-        private const val KEY_GEMINI_MODEL    = "gemini_model_id"
-        private const val KEY_DAILY_BRIEFING  = "daily_briefing_enabled"
-        private const val KEY_BRIEFING_HOUR   = "daily_briefing_hour"
-        private const val KEY_BRIEFING_MINUTE = "daily_briefing_minute"
-        private const val KEY_LAST_BRIEFING   = "last_briefing_json"
-        private const val KEY_CLAUDE          = "claude_api_key"
-        private const val KEY_CLAUDE_MODEL    = "claude_model_id"
-        private const val KEY_PROVIDER        = "selected_provider"
+        private const val KEY_GEMINI               = "gemini_api_key"
+        private const val KEY_NOTION               = "notion_token"
+        private const val KEY_NOTION_DB            = "notion_database_id"
+        private const val KEY_AUTO_RUN             = "auto_run_on_launch"
+        private const val KEY_GEMINI_MODEL         = "gemini_model_id"
+        private const val KEY_DAILY_BRIEFING       = "daily_briefing_enabled"
+        private const val KEY_BRIEFING_HOUR        = "daily_briefing_hour"
+        private const val KEY_BRIEFING_MINUTE      = "daily_briefing_minute"
+        private const val KEY_LAST_BRIEFING        = "last_briefing_json"
+        private const val KEY_CLAUDE               = "claude_api_key"
+        private const val KEY_CLAUDE_MODEL         = "claude_model_id"
+        private const val KEY_PROVIDER             = "selected_provider"
+        private const val KEY_SHARED_POSTS_DB_ID   = "shared_posts_db_id"
+        private const val KEY_SHARED_POSTS_TAXONOMY = "shared_posts_taxonomy"
+        private const val KEY_SHARED_POSTS_CACHE   = "shared_posts_cache_json"
 
         private const val DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
         private const val DEFAULT_CLAUDE_MODEL = "claude-sonnet-4-6"
         private const val DEFAULT_PROVIDER     = "gemini"
         private const val DEFAULT_HOUR         = 9
         private const val DEFAULT_MINUTE       = 0
+        private val DEFAULT_TAXONOMY           = listOf("Misc")
 
         // Tink-sealed (sensitive or text). Plain in DataStore (bool / int — not secrets).
         private val STRING_KEYS = listOf(
             KEY_GEMINI, KEY_NOTION, KEY_NOTION_DB,
             KEY_GEMINI_MODEL, KEY_CLAUDE, KEY_CLAUDE_MODEL,
             KEY_PROVIDER, KEY_LAST_BRIEFING,
+            KEY_SHARED_POSTS_DB_ID, KEY_SHARED_POSTS_TAXONOMY, KEY_SHARED_POSTS_CACHE,
         )
         private val BOOLEAN_KEYS = listOf(KEY_AUTO_RUN, KEY_DAILY_BRIEFING)
         private val INT_KEYS     = listOf(KEY_BRIEFING_HOUR, KEY_BRIEFING_MINUTE)
+
+        // Local-only serializer for the taxonomy list. Posts cache uses its own
+        // Json instance in SharedPostsRepository so the schema can evolve there
+        // without churning this store.
+        private val taxonomyJson = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
     }
 }
