@@ -11,7 +11,6 @@ import com.luna.morningagent.data.notion.NotionConfigMissingException
 import com.luna.morningagent.data.notion.NotionRestClient
 import com.luna.morningagent.data.notion.NotionTaskSource
 import com.luna.morningagent.data.secure.TokenStore
-import com.luna.morningagent.data.sharedposts.SharedPostsRepository
 import com.luna.morningagent.worker.BriefingScheduler
 import com.luna.morningagent.worker.MorningAgentWorker
 import kotlinx.coroutines.delay
@@ -22,9 +21,6 @@ sealed interface NotionTestResult {
     data class  Success(val taskCount: Int) : NotionTestResult
     data class  Failure(val message: String) : NotionTestResult
 }
-
-/** Display row for the SAVED POSTS taxonomy section in Settings. */
-data class CategoryEntry(val name: String, val count: Int)
 
 data class SettingsUiState(
     val selectedProvider: ProviderOption = ProviderOption.Default,
@@ -52,49 +48,9 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     private val store = TokenStore(application)
     private val notionClient: NotionTaskSource = NotionRestClient(store)
-    private val sharedPostsRepo = SharedPostsRepository(store)
 
     var uiState by mutableStateOf(SettingsUiState())
         private set
-
-    /**
-     * Categories surfaced under the SAVED POSTS section. Sourced from the
-     * persisted taxonomy + augmented with anything that lives on a cached post
-     * (a defensive net for taxonomy drift). Counts come from the cache so the
-     * row label reads "Tech · 4 saves" without a separate query.
-     */
-    var savedPostCategories: List<CategoryEntry> by mutableStateOf(emptyList())
-        private set
-
-    init {
-        refreshSavedPostCategories()
-    }
-
-    private fun refreshSavedPostCategories() {
-        val posts = sharedPostsRepo.listAll()
-        val byName = posts.flatMap { it.categories }.groupingBy { it }.eachCount()
-        val taxonomy = store.getSharedPostsTaxonomy()
-        // Surface taxonomy entries first (preserves user order), then any
-        // category that exists on a post but didn't reach the taxonomy.
-        val combined = (taxonomy + byName.keys).distinct()
-        savedPostCategories = combined.map { name ->
-            CategoryEntry(name = name, count = byName[name] ?: 0)
-        }
-    }
-
-    fun renameSavedPostCategory(old: String, new: String) {
-        viewModelScope.launch {
-            sharedPostsRepo.renameCategory(old, new)
-            refreshSavedPostCategories()
-        }
-    }
-
-    fun deleteSavedPostCategory(name: String) {
-        viewModelScope.launch {
-            sharedPostsRepo.deleteCategory(name)
-            refreshSavedPostCategories()
-        }
-    }
 
     init {
         val savedDb  = store.getNotionDatabaseId().orEmpty()

@@ -9,16 +9,19 @@ import kotlinx.serialization.json.Json
  * Repository for shared posts. The local JSON cache in TokenStore is the
  * source of truth — Notion is a mirror that may lag behind.
  *
- * On save:
- *  1. Build a SharedPost from the raw shared text (extract URL, guess source).
- *  2. Append to the local cache immediately so the UI sees it on next read.
- *  3. If TokenStore.sharedPostsDbId is set, try createPage() — on success,
- *     stamp `notionId` into the cached entry; on failure, mark pendingSync.
- *  4. If unset, mark pendingSync; the Home banner (commit 3) will surface
- *     the setup flow later.
+ * Pipeline (orchestrated by ShareReceiverActivity):
+ *  1. `save()` — parses the shared text and appends to the cache. Always
+ *     marks `pendingSync = true`. Does NOT touch Notion — that's deferred
+ *     so the body fetcher can enrich URL-only shares before the first
+ *     Notion write sees them.
+ *  2. (caller) body fetch + `updateContent()` if the share was a bare URL.
+ *  3. `syncToNotion()` — calls createPage with the now-enriched post.
+ *     Failures leave pendingSync = true; the Saved-screen setup flow's
+ *     flushPendingPosts() retry-sweeps them.
+ *  4. (caller) categorize → `applyCategorization()`.
  *
- * Categorization is a no-op here — that's commit 2's SavedPostCategorizer
- * job, which mutates the same cache entry once the agent returns.
+ * Categorization is a no-op here — that's the SavedPostCategorizer job,
+ * which mutates the same cache entry once the agent returns.
  */
 class SharedPostsRepository(
     private val tokenStore: TokenStore,
@@ -26,10 +29,12 @@ class SharedPostsRepository(
 ) {
 
     /**
-     * Save a shared text payload (post body, optional subject).
-     *
-     * Result tells the caller whether the post landed in Notion or got cached
-     * as pendingSync — so the receiver activity can pick the right toast copy.
+     * Parse a shared text payload and append it to the local cache. Notion is
+     * NOT touched here — the caller is expected to enrich the body (for
+     * URL-only shares) before calling [syncToNotion]. That way the first
+     * Notion write already has the real post body instead of a bare URL,
+     * which prevents `refreshFromNotion()` from later overwriting an
+     * enriched local cache with Notion's stale URL.
      */
     suspend fun save(rawText: String, subject: String?): SaveResult {
         val trimmed = rawText.trim()
@@ -52,28 +57,33 @@ class SharedPostsRepository(
             author                = author,
             url                   = url,
             savedAt               = Clock.System.now(),
-            pendingSync           = tokenStore.getSharedPostsDbId() == null,
+            pendingSync           = true,
             pendingCategorization = true,
         )
 
         appendToCache(post)
+        return SaveResult.SavedPending(post)
+    }
 
-        val dbId = tokenStore.getSharedPostsDbId()
-        if (dbId == null) {
-            return SaveResult.SavedPending(post)
-        }
+    /**
+     * Push a cached post to Notion. Called after the body fetcher has had a
+     * chance to enrich content, so Notion's first createPage already carries
+     * the real post body. No-op when the DB isn't configured (post stays
+     * pendingSync = true; the setup-flow flush will pick it up later) or when
+     * the post has already been synced (notionId set).
+     *
+     * On success: stamps notionId, clears pendingSync.
+     * On failure: pendingSync stays true; the Home banner / setup flow's
+     * flushPendingPosts() will retry.
+     */
+    suspend fun syncToNotion(localId: String) {
+        val dbId = tokenStore.getSharedPostsDbId() ?: return
+        val post = readCache().firstOrNull { it.localId == localId } ?: return
+        if (post.notionId != null) return
 
-        // Notion write — on failure, leave the cache entry pendingSync = true
-        // and let the banner flush later. The save itself still succeeded.
-        return runCatching { notionClient.createPage(dbId, post) }
-            .map { notionId ->
-                val synced = post.copy(notionId = notionId, pendingSync = false)
-                updateCache(post.localId) { synced }
-                SaveResult.SavedToNotion(synced)
-            }
-            .getOrElse { _ ->
-                updateCache(post.localId) { it.copy(pendingSync = true) }
-                SaveResult.SavedPending(post)
+        runCatching { notionClient.createPage(dbId, post) }
+            .onSuccess { notionId ->
+                updateCache(localId) { it.copy(notionId = notionId, pendingSync = false) }
             }
     }
 
@@ -226,65 +236,6 @@ class SharedPostsRepository(
         writeCache(current)
     }
 
-    /**
-     * Rename a category across the taxonomy + every cached post that uses it.
-     * If `new` already exists on a post (i.e. both old + new are present),
-     * the rename de-dupes. Notion mirror gets a patch per affected post.
-     * No-ops when `old` isn't in the taxonomy or `new` is blank / same as old.
-     */
-    suspend fun renameCategory(old: String, new: String) {
-        val oldName = old.trim()
-        val newName = new.trim()
-        if (oldName.isBlank() || newName.isBlank() || oldName == newName) return
-
-        val taxonomy = tokenStore.getSharedPostsTaxonomy()
-        if (oldName !in taxonomy) return
-        // Preserve order; drop duplicates that would arise if `new` was already there.
-        val nextTaxonomy = taxonomy.map { if (it == oldName) newName else it }.distinct()
-        tokenStore.saveSharedPostsTaxonomy(nextTaxonomy)
-
-        val affected = mutableListOf<SharedPost>()
-        readCache().forEach { post ->
-            if (oldName in post.categories) {
-                val swapped = post.categories.map { if (it == oldName) newName else it }.distinct()
-                updateCache(post.localId) { it.copy(categories = swapped) }
-                if (post.notionId != null) {
-                    affected.add(post.copy(categories = swapped))
-                }
-            }
-        }
-        affected.forEach { p ->
-            runCatching { notionClient.updatePageCategoriesAndSummary(p.notionId!!, p.categories, p.summary) }
-        }
-    }
-
-    /**
-     * Delete a category from the taxonomy and strip it from every cached post.
-     * Notion-synced posts get a patch with the trimmed categories list.
-     * No-op when `name` isn't in the taxonomy.
-     */
-    suspend fun deleteCategory(name: String) {
-        val target = name.trim()
-        if (target.isBlank()) return
-        val taxonomy = tokenStore.getSharedPostsTaxonomy()
-        if (target !in taxonomy) return
-        tokenStore.saveSharedPostsTaxonomy(taxonomy.filterNot { it == target })
-
-        val affected = mutableListOf<SharedPost>()
-        readCache().forEach { post ->
-            if (target in post.categories) {
-                val trimmed = post.categories.filterNot { it == target }
-                updateCache(post.localId) { it.copy(categories = trimmed) }
-                if (post.notionId != null) {
-                    affected.add(post.copy(categories = trimmed))
-                }
-            }
-        }
-        affected.forEach { p ->
-            runCatching { notionClient.updatePageCategoriesAndSummary(p.notionId!!, p.categories, p.summary) }
-        }
-    }
-
     // --- Cache I/O ----------------------------------------------------------
 
     @Synchronized
@@ -423,10 +374,8 @@ sealed interface SaveResult {
     /** Convenience accessor — null when the save was rejected as empty input. */
     val post: SharedPost?
 
-    /** Post was cached and mirrored to Notion successfully. */
-    data class SavedToNotion(override val post: SharedPost) : SaveResult
-    /** Post was cached but the Notion mirror is pending (no DB id, or write failed). */
-    data class SavedPending(override val post: SharedPost)  : SaveResult
+    /** Post was appended to the cache. Notion sync happens after body enrichment. */
+    data class SavedPending(override val post: SharedPost) : SaveResult
     /** Input was empty / whitespace — nothing was saved. */
     data object EmptyInput : SaveResult { override val post: SharedPost? = null }
 }

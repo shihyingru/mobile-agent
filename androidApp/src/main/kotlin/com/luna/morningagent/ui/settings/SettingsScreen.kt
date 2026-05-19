@@ -28,7 +28,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Check
-import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -88,7 +87,6 @@ fun SettingsScreen(
     BackHandler { handleBack() }
     SettingsScreenContent(
         uiState                = vm.uiState,
-        savedPostCategories    = vm.savedPostCategories,
         onProviderChange       = vm::setProvider,
         onModelChange          = vm::setSelectedModel,
         onGeminiDraftChange    = vm::updateGeminiDraft,
@@ -101,8 +99,6 @@ fun SettingsScreen(
         onSendTestNotification = vm::sendTestNotification,
         onTestNotion           = vm::testNotionConnection,
         onSave                 = vm::save,
-        onRenameCategory       = vm::renameSavedPostCategory,
-        onDeleteCategory       = vm::deleteSavedPostCategory,
         onBack                 = handleBack,
         modifier               = modifier,
     )
@@ -111,7 +107,6 @@ fun SettingsScreen(
 @Composable
 private fun SettingsScreenContent(
     uiState: SettingsUiState,
-    savedPostCategories: List<CategoryEntry>,
     onProviderChange: (ProviderOption) -> Unit,
     onModelChange: (String) -> Unit,
     onGeminiDraftChange: (String) -> Unit,
@@ -124,8 +119,6 @@ private fun SettingsScreenContent(
     onSendTestNotification: () -> Unit,
     onTestNotion: () -> Unit,
     onSave: () -> Unit,
-    onRenameCategory: (String, String) -> Unit,
-    onDeleteCategory: (String) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -142,8 +135,6 @@ private fun SettingsScreenContent(
         uiState.databaseDraft != uiState.savedDatabaseId
 
     var showTimePicker by remember { mutableStateOf(false) }
-    var renameTarget: CategoryEntry? by remember { mutableStateOf(null) }
-    var deleteTarget: CategoryEntry? by remember { mutableStateOf(null) }
 
     Box(
         modifier = modifier
@@ -357,39 +348,7 @@ private fun SettingsScreenContent(
                 }
             }
 
-            // Saved posts — shows the taxonomy the agent has grown organically.
-            // Always visible (the seed taxonomy is ["Misc"], so the list is
-            // never empty); rows where count = 0 just read "0 saves" and can
-            // still be renamed or removed.
-            if (savedPostCategories.isNotEmpty()) {
-                SavedPostsTaxonomySection(
-                    categories     = savedPostCategories,
-                    onRowClick     = { renameTarget = it },
-                    onDeleteClick  = { deleteTarget = it },
-                )
-            }
         }
-    }
-
-    renameTarget?.let { target ->
-        RenameCategoryDialog(
-            current   = target.name,
-            onDismiss = { renameTarget = null },
-            onConfirm = { newName ->
-                onRenameCategory(target.name, newName)
-                renameTarget = null
-            },
-        )
-    }
-    deleteTarget?.let { target ->
-        DeleteCategoryDialog(
-            target    = target,
-            onDismiss = { deleteTarget = null },
-            onConfirm = {
-                onDeleteCategory(target.name)
-                deleteTarget = null
-            },
-        )
     }
 
     if (showTimePicker) {
@@ -672,172 +631,6 @@ private fun BriefingTimePickerDialog(
     )
 }
 
-// --- Saved-posts taxonomy section -----------------------------------------
-
-@Composable
-private fun SavedPostsTaxonomySection(
-    categories: List<CategoryEntry>,
-    onRowClick: (CategoryEntry) -> Unit,
-    onDeleteClick: (CategoryEntry) -> Unit,
-) {
-    val morning = MaterialTheme.morning
-    SectionLabel(
-        text     = stringResource(R.string.settings_section_saved_posts),
-        modifier = Modifier.padding(top = 18.dp),
-    )
-    Text(
-        text     = stringResource(R.string.settings_saved_posts_intro),
-        style    = MorningType.BodyReadItalic.copy(fontSize = androidx.compose.ui.unit.TextUnit(13f, androidx.compose.ui.unit.TextUnitType.Sp)),
-        color    = morning.textSecondary,
-        modifier = Modifier.padding(horizontal = 2.dp, vertical = 4.dp),
-    )
-    Column(modifier = Modifier.fillMaxWidth()) {
-        BehaviorDivider()
-        categories.forEach { entry ->
-            CategoryRow(
-                entry         = entry,
-                onClick       = { onRowClick(entry) },
-                onDeleteClick = { onDeleteClick(entry) },
-            )
-            BehaviorDivider()
-        }
-    }
-}
-
-@Composable
-private fun CategoryRow(
-    entry: CategoryEntry,
-    onClick: () -> Unit,
-    onDeleteClick: () -> Unit,
-) {
-    val morning = MaterialTheme.morning
-    Row(
-        modifier              = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 2.dp, vertical = 14.dp),
-        verticalAlignment     = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text  = entry.name,
-                style = MorningType.RowTitle,
-                color = morning.textPrimary,
-            )
-            Text(
-                text  = stringResource(R.string.settings_saved_posts_count, entry.count),
-                style = MorningType.MetaMono,
-                color = morning.textMuted,
-            )
-        }
-        IconButton(onClick = onDeleteClick) {
-            Icon(
-                imageVector        = Icons.Rounded.DeleteOutline,
-                contentDescription = stringResource(R.string.cd_delete_category),
-                tint               = morning.accent,
-                modifier           = Modifier.size(20.dp),
-            )
-        }
-    }
-}
-
-@Composable
-private fun RenameCategoryDialog(
-    current: String,
-    onDismiss: () -> Unit,
-    onConfirm: (String) -> Unit,
-) {
-    val morning = MaterialTheme.morning
-    var draft by remember { mutableStateOf(current) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor   = morning.surface,
-        title = {
-            Text(
-                text  = stringResource(R.string.settings_saved_posts_rename_title),
-                style = MorningType.SectionHeading,
-                color = morning.textPrimary,
-            )
-        },
-        text = {
-            SettingsInput(
-                label         = current,
-                value         = draft,
-                onValueChange = { draft = it },
-                placeholder   = current,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-            )
-        },
-        confirmButton = {
-            TextButton(
-                enabled = draft.trim().isNotBlank() && draft.trim() != current,
-                onClick = { onConfirm(draft.trim()) },
-            ) {
-                Text(
-                    text  = stringResource(R.string.settings_time_picker_confirm),
-                    style = MorningType.ButtonLabel,
-                    color = morning.accent,
-                )
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(
-                    text  = stringResource(R.string.settings_time_picker_cancel),
-                    style = MorningType.ButtonLabel,
-                    color = morning.textMuted,
-                )
-            }
-        },
-    )
-}
-
-@Composable
-private fun DeleteCategoryDialog(
-    target: CategoryEntry,
-    onDismiss: () -> Unit,
-    onConfirm: () -> Unit,
-) {
-    val morning = MaterialTheme.morning
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor   = morning.surface,
-        title = {
-            Text(
-                text  = stringResource(R.string.settings_saved_posts_delete_title, target.name),
-                style = MorningType.SectionHeading,
-                color = morning.textPrimary,
-            )
-        },
-        text = {
-            Text(
-                text  = stringResource(R.string.settings_saved_posts_delete_body, target.count),
-                style = MorningType.BodyReadItalic,
-                color = morning.textSecondary,
-            )
-        },
-        confirmButton = {
-            TextButton(onClick = onConfirm) {
-                Text(
-                    text  = "Delete",
-                    style = MorningType.ButtonLabel,
-                    color = morning.error,
-                )
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(
-                    text  = stringResource(R.string.settings_time_picker_cancel),
-                    style = MorningType.ButtonLabel,
-                    color = morning.textMuted,
-                )
-            }
-        },
-    )
-}
-
 // --- Previews -------------------------------------------------------------
 
 @Preview(showBackground = true, backgroundColor = 0xFFE5E1DD, name = "Settings – empty (Light)")
@@ -855,12 +648,9 @@ private fun SettingsEmptyPreview() {
             onAutoRunChange        = {},
             onDailyBriefingChange  = {},
             onBriefingTimeChange   = { _, _ -> },
-            savedPostCategories    = emptyList(),
             onSendTestNotification = {},
             onTestNotion           = {},
             onSave                 = {},
-            onRenameCategory       = { _, _ -> },
-            onDeleteCategory       = {},
             onBack                 = {},
         )
     }
@@ -890,12 +680,9 @@ private fun SettingsSavedPreview() {
             onAutoRunChange        = {},
             onDailyBriefingChange  = {},
             onBriefingTimeChange   = { _, _ -> },
-            savedPostCategories    = emptyList(),
             onSendTestNotification = {},
             onTestNotion           = {},
             onSave                 = {},
-            onRenameCategory       = { _, _ -> },
-            onDeleteCategory       = {},
             onBack                 = {},
         )
     }

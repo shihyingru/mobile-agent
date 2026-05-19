@@ -54,43 +54,56 @@ class ShareReceiverActivity : Activity() {
         // completion in the same process.
         appScope.launch {
             val result = runCatching { repo.save(rawText, subject) }.getOrNull()
+
+            // Toast picks copy from the DB-configured state (not the save
+            // result — Notion sync is now deferred until after body enrichment,
+            // so its outcome isn't known yet).
+            val hasDb = tokenStore.getSharedPostsDbId() != null
             val toastRes = when (result) {
-                is SaveResult.SavedToNotion -> R.string.share_saved_toast
-                is SaveResult.SavedPending  -> R.string.share_saved_pending_toast
+                is SaveResult.SavedPending  ->
+                    if (hasDb) R.string.share_saved_toast
+                    else       R.string.share_saved_pending_toast
                 SaveResult.EmptyInput, null -> R.string.share_saved_failed_toast
             }
             withContext(Dispatchers.Main) {
                 Toast.makeText(appContext, toastRes, Toast.LENGTH_SHORT).show()
             }
 
-            // Threads/X/Instagram share intents carry only the post URL, never
-            // the body. Enrich content from the URL before categorizing so the
-            // agent has real text to summarise.
-            val enriched = result?.post?.let { saved ->
+            val saved = result?.post ?: return@launch
+
+            // 1. Enrich content. Threads/X/Instagram intents carry only the
+            //    URL — scrape og:description (with a Gemini url_context
+            //    fallback) so the cache (and later Notion) sees the real
+            //    post body, not a bare URL.
+            val enriched = run {
                 val needsBody = saved.url != null &&
                     (saved.content == saved.url || saved.content.length < 80)
-                if (!needsBody) return@let saved
+                if (!needsBody) return@run saved
                 val fetched = runCatching { bodyFetcher.fetchBody(saved.url!!) }.getOrNull()
-                if (fetched.isNullOrBlank()) return@let saved
+                if (fetched.isNullOrBlank()) return@run saved
                 repo.updateContent(saved.localId, fetched)
                 saved.copy(content = fetched)
             }
 
-            // Categorize the post in the background once it's cached. Fire even
-            // when only locally cached — the agent's output sticks in the cache,
-            // and the Notion patch happens later when the post syncs.
-            enriched?.let { saved ->
-                val categories = categorizer.categorize(
-                    post              = saved,
-                    existingTaxonomy  = tokenStore.getSharedPostsTaxonomy(),
+            // 2. NOW push to Notion. createPage carries the enriched content
+            //    so Notion's first write isn't a bare URL — important because
+            //    refreshFromNotion() treats Notion as source-of-truth on
+            //    content and would otherwise overwrite the local body back to
+            //    the URL on the next Saved-screen entry.
+            repo.syncToNotion(enriched.localId)
+
+            // 3. Categorize. applyCategorization writes categories + summary
+            //    into the cache and patches the (now-existing) Notion page.
+            val categories = categorizer.categorize(
+                post              = enriched,
+                existingTaxonomy  = tokenStore.getSharedPostsTaxonomy(),
+            )
+            if (categories != null) {
+                repo.applyCategorization(
+                    localId    = enriched.localId,
+                    categories = categories.categories,
+                    summary    = categories.summary.ifBlank { null },
                 )
-                if (categories != null) {
-                    repo.applyCategorization(
-                        localId    = saved.localId,
-                        categories = categories.categories,
-                        summary    = categories.summary.ifBlank { null },
-                    )
-                }
             }
         }
 

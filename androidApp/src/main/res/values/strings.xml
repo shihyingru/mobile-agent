@@ -120,13 +120,6 @@
     <string name="share_saved_failed_toast">Couldn\'t save — try again</string>
     <string name="cd_saved_posts">Saved posts</string>
     <string name="home_pending_banner">%1$d saves waiting · finish Notion sync</string>
-    <string name="settings_section_saved_posts">SAVED POSTS</string>
-    <string name="settings_saved_posts_intro">Rename or remove auto-grown categories. Changes mirror to every saved post.</string>
-    <string name="settings_saved_posts_count">%1$d saves</string>
-    <string name="settings_saved_posts_rename_title">Rename category</string>
-    <string name="settings_saved_posts_delete_title">Delete \"%1$s\"?</string>
-    <string name="settings_saved_posts_delete_body">Removes the category from %1$d saved post(s). The posts themselves are kept.</string>
-    <string name="cd_delete_category">Delete category</string>
     <string name="cd_delete_post">Delete saved post</string>
     <string name="cd_post_overflow">Post actions</string>
     <string name="saved_search_placeholder">Search content, author, source</string>
