@@ -127,6 +127,9 @@
     <string name="settings_saved_posts_delete_title">Delete \"%1$s\"?</string>
     <string name="settings_saved_posts_delete_body">Removes the category from %1$d saved post(s). The posts themselves are kept.</string>
     <string name="cd_delete_category">Delete category</string>
+    <string name="cd_delete_post">Delete saved post</string>
+    <string name="cd_post_overflow">Post actions</string>
+    <string name="saved_search_placeholder">Search content, author, source</string>
 
     <!-- v4 Settings -->
     <string name="settings_provider_coming_soon">Coming soon</string>

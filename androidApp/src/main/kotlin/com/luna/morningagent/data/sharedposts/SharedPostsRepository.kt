@@ -35,11 +35,13 @@ class SharedPostsRepository(
         val trimmed = rawText.trim()
         if (trimmed.isEmpty()) return SaveResult.EmptyInput
 
-        val url    = extractFirstUrl(trimmed)
+        val rawUrl = extractFirstUrl(trimmed)
+        val url    = rawUrl?.let { cleanTrackingParams(it) }
         val source = detectSource(url)
         // Strip the trailing URL when it's clearly appended to the text so the
         // post content reads cleanly. Threads share format: "<body>\n\n<url>".
-        val content = stripTrailingUrl(trimmed, url).ifBlank { trimmed }
+        // Use the raw URL — that's what's literally present in the source text.
+        val content = stripTrailingUrl(trimmed, rawUrl).ifBlank { trimmed }
         val author  = subject?.trim()?.takeIf { it.isNotBlank() }
             ?: url?.let { authorFromUrl(it) }
 
@@ -122,9 +124,101 @@ class SharedPostsRepository(
 
     fun listAll(): List<SharedPost> = readCache()
 
+    /**
+     * Pull the latest state of every (non-archived) page from the Notion DB and
+     * merge it into the local cache. Notion is treated as the read-side source
+     * of truth — its values win on `content`, `categories`, `summary`, `status`.
+     * App-managed signals (`localId`, `pendingSync`, `pendingCategorization`)
+     * are preserved from the local entry.
+     *
+     * Rules:
+     *   · Local pendingSync entries (no notionId) are preserved — they're the
+     *     outbox waiting to flush.
+     *   · Local entries whose notionId is no longer in the remote list get
+     *     dropped — Notion archived = soft delete on the app side.
+     *   · Remote-only pages (notionId we've never seen) are appended.
+     *   · Taxonomy is rebuilt from the merged posts' categories so deletions
+     *     in Notion also remove the corresponding filter chip locally; the
+     *     "Misc" seed is always kept.
+     *
+     * No-op when sharedPostsDbId isn't set yet.
+     */
+    suspend fun refreshFromNotion() {
+        val dbId = tokenStore.getSharedPostsDbId() ?: return
+        val remote = runCatching { notionClient.listDatabase(dbId) }.getOrNull() ?: return
+        synchronized(this) {
+            val local      = readCache()
+            val localByNid = local.associateBy { it.notionId }.filterKeys { it != null }
+            val remoteIds  = remote.mapNotNull { it.notionId }.toSet()
+
+            val merged = mutableListOf<SharedPost>()
+
+            // 1. Outbox first (no notionId, pendingSync=true) — these survive every fetch.
+            local.filter { it.notionId == null }.forEach { merged.add(it) }
+
+            // 2. For each remote row, merge with local-if-present. Notion
+            //    always wins on the content/categories/summary fields — the
+            //    AI-mid-flight race is narrow enough that protecting against
+            //    it locks edits out permanently when the AI never returns
+            //    (no key, empty result). Trust Notion as backend.
+            remote.forEach { remoteRow ->
+                val nid       = remoteRow.notionId ?: return@forEach
+                val cachedRow = localByNid[nid]
+                if (cachedRow != null) {
+                    merged.add(cachedRow.copy(
+                        content               = remoteRow.content,
+                        author                = remoteRow.author ?: cachedRow.author,
+                        url                   = remoteRow.url ?: cachedRow.url,
+                        categories            = remoteRow.categories,
+                        summary               = remoteRow.summary,
+                        status                = remoteRow.status,
+                        savedAt               = remoteRow.savedAt,
+                        pendingCategorization = false,
+                    ))
+                } else {
+                    // Brand-new in Notion (manual add, or other-device share).
+                    merged.add(remoteRow)
+                }
+            }
+
+            // 3. Local entries whose notionId is gone from Notion (archived)
+            //    get dropped implicitly — we only re-add from `remote` and the
+            //    pendingSync outbox. `remoteIds` retained for future audit logging.
+            @Suppress("UNUSED_VARIABLE") val ignored = remoteIds
+
+            // 4. Sort newest-first so the UI doesn't have to.
+            writeCache(merged.sortedByDescending { it.savedAt })
+
+            // 5. Rebuild taxonomy from the merged posts so deletions in Notion
+            //    drop the corresponding chip locally. Always keep the "Misc"
+            //    seed (the categorizer's empty-list fallback expects it).
+            val rebuilt = (listOf(SEED_CATEGORY) + merged.flatMap { it.categories })
+                .filter { it.isNotBlank() }
+                .distinct()
+            tokenStore.saveSharedPostsTaxonomy(rebuilt)
+        }
+    }
+
     /** Replace the cached post entirely — used by the categorizer (commit 2). */
     fun update(localId: String, transform: (SharedPost) -> SharedPost) {
         updateCache(localId, transform)
+    }
+
+    /**
+     * Replace just the post body in both the local cache and the Notion mirror
+     * (if synced). Used by the body fetcher after enriching a URL-only share
+     * with the actual post text. Notion patch failure leaves the local cache
+     * winning — the next categorization pass can re-push if it matters.
+     */
+    suspend fun updateContent(localId: String, content: String) {
+        var notionIdToPatch: String? = null
+        updateCache(localId) { existing ->
+            notionIdToPatch = existing.notionId
+            existing.copy(content = content)
+        }
+        notionIdToPatch?.let { pageId ->
+            runCatching { notionClient.updatePageContent(pageId, content) }
+        }
     }
 
     fun remove(localId: String) {
@@ -239,6 +333,48 @@ class SharedPostsRepository(
         URL_REGEX.find(text)?.value
 
     /**
+     * Drop tracking query params from a shared URL while preserving everything
+     * else (path, fragment, structurally meaningful params). Uses a per-host
+     * allowlist plus a universal set of cross-site trackers. Returns the input
+     * unchanged when there's nothing to strip.
+     */
+    private fun cleanTrackingParams(url: String): String {
+        val qIdx = url.indexOf('?')
+        if (qIdx < 0) return url
+        val hashIdx = url.indexOf('#', qIdx)
+        val base     = url.substring(0, qIdx)
+        val query    = if (hashIdx > 0) url.substring(qIdx + 1, hashIdx) else url.substring(qIdx + 1)
+        val fragment = if (hashIdx > 0) url.substring(hashIdx) else ""
+        if (query.isEmpty()) return base + fragment
+
+        val host = runCatching { android.net.Uri.parse(url).host?.lowercase() }.getOrNull()
+            ?: return url
+        val drop = trackingParamsFor(host)
+        if (drop.isEmpty()) return url
+
+        val originalPairs = query.split('&')
+        val keptPairs = originalPairs.filter { pair ->
+            val name = pair.substringBefore('=')
+            !drop.any { p ->
+                if (p.endsWith("*")) name.startsWith(p.dropLast(1)) else name == p
+            }
+        }
+        if (keptPairs.size == originalPairs.size) return url
+        return if (keptPairs.isEmpty()) base + fragment
+               else base + "?" + keptPairs.joinToString("&") + fragment
+    }
+
+    private fun trackingParamsFor(host: String): Set<String> {
+        val perHost: Set<String> = when {
+            host.endsWith("threads.com") || host.endsWith("threads.net") -> setOf("xmt", "slof")
+            host.endsWith("twitter.com") || host.endsWith("x.com")       -> setOf("t", "s")
+            host.endsWith("instagram.com")                               -> setOf("igsh", "igshid")
+            else                                                         -> emptySet()
+        }
+        return UNIVERSAL_TRACKING_PARAMS + perHost
+    }
+
+    /**
      * If the URL sits at the very end of the text (typical share format), drop
      * it from the body so the content doesn't repeat what's already in `url`.
      * Leaves embedded URLs alone — only trims when the URL is the trailing
@@ -258,8 +394,19 @@ class SharedPostsRepository(
     }
 
     companion object {
+        // Seed category — always kept in the taxonomy so empty Notion DBs and
+        // first-launch states still show a usable filter chip + categorizer
+        // fallback.
+        private const val SEED_CATEGORY = "Misc"
+
         // Matches https?://[^\s]+ — good enough for shared text payloads.
         private val URL_REGEX = Regex("""https?://[^\s]+""")
+
+        // Cross-site analytics params dropped regardless of host. Names ending
+        // in `*` match by prefix (e.g. utm_* covers utm_source, utm_medium, …).
+        private val UNIVERSAL_TRACKING_PARAMS = setOf(
+            "utm_*", "fbclid", "gclid", "mc_eid", "mc_cid", "_branch_match_id",
+        )
 
         // Pulls /@username/ or /username/ from a URL path (Threads, Twitter, X).
         private val USERNAME_IN_PATH = Regex("""(?:threads\.(?:net|com)|twitter\.com|x\.com)/(@?[\w.]+)""")

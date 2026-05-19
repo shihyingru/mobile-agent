@@ -1,5 +1,6 @@
 package com.luna.morningagent.ui.sharedposts
 
+import android.content.ClipData
 import android.content.Intent
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -25,41 +26,52 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.net.toUri
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.ui.platform.toClipEntry
 import com.luna.morningagent.R
 import com.luna.morningagent.data.sharedposts.SharedPost
 import com.luna.morningagent.ui.settings.components.SettingsInput
+import com.luna.morningagent.ui.sharedposts.components.SavedPostActionSheet
 import com.luna.morningagent.ui.sharedposts.components.SavedPostCard
+import com.luna.morningagent.ui.theme.InterFamily
 import com.luna.morningagent.ui.theme.MorningAgentTheme
 import com.luna.morningagent.ui.theme.MorningType
 import com.luna.morningagent.ui.theme.morning
+import kotlinx.coroutines.launch
 
 @Composable
 fun SavedPostsScreen(
@@ -68,16 +80,21 @@ fun SavedPostsScreen(
     vm: SavedPostsViewModel = viewModel(),
 ) {
     BackHandler { onBack() }
-    LaunchedEffect(Unit) { vm.refresh() }
+    LaunchedEffect(Unit) {
+        vm.refresh()
+        vm.refreshFromNotion()
+    }
 
     val morning = MaterialTheme.morning
     val context = LocalContext.current
+    val clipboard = LocalClipboard.current
+    val scope = rememberCoroutineScope()
 
     val statusBars = WindowInsets.statusBars.asPaddingValues()
     val navBars    = WindowInsets.navigationBars.asPaddingValues()
 
     var expandedId: String? by remember { mutableStateOf(null) }
-    var pendingDelete: SharedPost? by remember { mutableStateOf(null) }
+    var sheetPost: SharedPost? by remember { mutableStateOf(null) }
 
     Box(
         modifier = modifier
@@ -93,82 +110,85 @@ fun SavedPostsScreen(
                 top    = 14.dp + statusBars.calculateTopPadding(),
                 bottom = 32.dp + navBars.calculateBottomPadding(),
             ),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            item {
-                SavedHeader(
-                    count   = vm.posts.size,
-                    onBack  = onBack,
-                )
-            }
+            item { SavedHeader(onBack = onBack) }
 
             // Inline setup card — only when Notion DB isn't configured AND
             // there's pending work waiting to flush. Hidden once dbId lands.
             if (vm.dbId == null && vm.pendingSyncCount > 0) {
                 item {
                     SetupCard(
-                        urlDraft   = vm.setupUrlDraft,
-                        pending    = vm.pendingSyncCount,
-                        state      = vm.setupState,
-                        onChange   = vm::onSetupUrlChange,
-                        onSetUp    = vm::runSetup,
+                        urlDraft = vm.setupUrlDraft,
+                        pending  = vm.pendingSyncCount,
+                        state    = vm.setupState,
+                        onChange = vm::onSetupUrlChange,
+                        onSetUp  = vm::runSetup,
                     )
                 }
             }
 
             item {
-                SettingsInput(
-                    label           = "Search saved posts",
-                    value           = vm.search,
-                    onValueChange   = vm::onSearchChange,
-                    placeholder     = "Search content, summary, author, category",
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                SavedSearchRow(
+                    value         = vm.search,
+                    onValueChange = vm::onSearchChange,
                 )
             }
 
             item {
                 CategoryFilterRow(
-                    categories      = vm.allCategories,
-                    activeCategory  = vm.activeCategory,
-                    counts          = vm.posts.flatMap { it.categories }.groupingBy { it }.eachCount(),
-                    onSelect        = vm::onCategorySelect,
+                    categories     = vm.allCategories,
+                    activeCategory = vm.activeCategory,
+                    onSelect       = vm::onCategorySelect,
                 )
             }
 
             val visible = vm.filteredPosts
             if (visible.isEmpty()) {
-                item {
-                    EmptyState(hasAnyPosts = vm.posts.isNotEmpty())
-                }
+                item { EmptyState(hasAnyPosts = vm.posts.isNotEmpty()) }
             } else {
                 items(visible, key = { it.localId }) { post ->
-                    SavedPostCard(
-                        post        = post,
-                        expanded    = post.localId == expandedId,
-                        onTap       = {
-                            if (post.url != null) {
-                                runCatching {
-                                    context.startActivity(
-                                        Intent(Intent.ACTION_VIEW, post.url.toUri()),
-                                    )
-                                }
-                            } else {
-                                expandedId = if (expandedId == post.localId) null else post.localId
+                    val openExternal: () -> Unit = {
+                        post.url?.let { url ->
+                            runCatching {
+                                context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
                             }
+                        }
+                    }
+                    SavedPostCard(
+                        post         = post,
+                        onTap        = {
+                            if (post.url != null) openExternal()
+                            else expandedId = if (expandedId == post.localId) null else post.localId
                         },
-                        onLongPress = { pendingDelete = post },
+                        onOverflow   = { sheetPost = post },
+                        onDelete     = { vm.delete(post) },
+                        bodyMaxLines = if (expandedId == post.localId) Int.MAX_VALUE else 4,
                     )
                 }
             }
         }
     }
 
-    pendingDelete?.let { target ->
-        DeleteConfirmDialog(
-            onDismiss = { pendingDelete = null },
-            onConfirm = {
+    sheetPost?.let { target ->
+        SavedPostActionSheet(
+            post           = target,
+            onDismiss      = { sheetPost = null },
+            onSendToAgent  = {
+                // TODO(future): wire to today's briefing feed.
+                sheetPost = null
+            },
+            onCopyLink     = {
+                target.url?.let { url ->
+                    scope.launch {
+                        clipboard.setClipEntry(ClipData.newPlainText("Saved post URL", url).toClipEntry())
+                    }
+                }
+                sheetPost = null
+            },
+            onDelete       = {
                 vm.delete(target)
-                pendingDelete = null
+                sheetPost = null
             },
         )
     }
@@ -177,12 +197,12 @@ fun SavedPostsScreen(
 // --- Header --------------------------------------------------------------
 
 @Composable
-private fun SavedHeader(count: Int, onBack: () -> Unit) {
+private fun SavedHeader(onBack: () -> Unit) {
     val morning = MaterialTheme.morning
     Row(
         modifier              = Modifier
             .fillMaxWidth()
-            .padding(top = 4.dp, bottom = 8.dp),
+            .padding(top = 4.dp, bottom = 6.dp),
         verticalAlignment     = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
@@ -200,15 +220,59 @@ private fun SavedHeader(count: Int, onBack: () -> Unit) {
             text  = "Saved",
             style = MorningType.ScreenTitle,
             color = morning.textPrimary,
-            modifier = Modifier.weight(1f),
         )
-        if (count > 0) {
-            Text(
-                text  = "$count saved",
-                style = MorningType.MetaMono,
-                color = morning.textMuted,
-            )
-        }
+    }
+}
+
+// --- Search row (passive-looking, single-line) ---------------------------
+
+@Composable
+private fun SavedSearchRow(value: String, onValueChange: (String) -> Unit) {
+    val morning = MaterialTheme.morning
+    val isEmpty = value.isEmpty()
+    val textStyle = TextStyle(
+        fontFamily = InterFamily,
+        fontWeight = FontWeight.Normal,
+        fontSize   = 13.sp,
+        color      = if (isEmpty) morning.textMuted else morning.textPrimary,
+    )
+    Row(
+        modifier              = Modifier
+            .fillMaxWidth()
+            .height(40.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(morning.surface)
+            .border(width = 1.dp, color = morning.cardEdge, shape = RoundedCornerShape(12.dp))
+            .padding(horizontal = 12.dp),
+        verticalAlignment     = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Icon(
+            imageVector        = Icons.Rounded.Search,
+            contentDescription = null,
+            tint               = morning.textMuted,
+            modifier           = Modifier.size(15.dp),
+        )
+        BasicTextField(
+            value           = value,
+            onValueChange   = onValueChange,
+            modifier        = Modifier.fillMaxWidth(),
+            singleLine      = true,
+            textStyle       = textStyle,
+            cursorBrush     = SolidColor(morning.accent),
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+            decorationBox   = { inner ->
+                Box {
+                    if (isEmpty) {
+                        Text(
+                            text  = stringResource(R.string.saved_search_placeholder),
+                            style = textStyle,
+                        )
+                    }
+                    inner()
+                }
+            },
+        )
     }
 }
 
@@ -238,7 +302,7 @@ private fun SetupCard(
         )
         Text(
             text  = "Paste the Notion page URL where Morning Agent should create its Shared Posts database. Pending saves flush automatically.",
-            style = MorningType.BodyReadItalic.copy(fontSize = androidx.compose.ui.unit.TextUnit(13f, androidx.compose.ui.unit.TextUnitType.Sp)),
+            style = MorningType.BodyReadItalic.copy(fontSize = 13.sp),
             color = morning.textSecondary,
         )
         SettingsInput(
@@ -311,22 +375,18 @@ private fun SetupButton(label: String, enabled: Boolean, loading: Boolean, onCli
 private fun CategoryFilterRow(
     categories: List<String>,
     activeCategory: String?,
-    counts: Map<String, Int>,
     onSelect: (String?) -> Unit,
 ) {
     if (categories.isEmpty()) return
     LazyRow(
-        modifier              = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 2.dp),
+        modifier              = Modifier.fillMaxWidth(),
         contentPadding        = PaddingValues(horizontal = 0.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        item { FilterChip(label = "All", count = null, active = activeCategory == null, onClick = { onSelect(null) }) }
+        item { FilterChip(label = "All", active = activeCategory == null, onClick = { onSelect(null) }) }
         items(categories) { name ->
             FilterChip(
                 label   = name,
-                count   = counts[name],
                 active  = activeCategory == name,
                 onClick = { onSelect(name) },
             )
@@ -335,37 +395,31 @@ private fun CategoryFilterRow(
 }
 
 @Composable
-private fun FilterChip(label: String, count: Int?, active: Boolean, onClick: () -> Unit) {
+private fun FilterChip(label: String, active: Boolean, onClick: () -> Unit) {
     val morning = MaterialTheme.morning
-    val bg = if (active) morning.accent else morning.surface
-    val fg = if (active) morning.onAccent else morning.textPrimary
-    val border = if (active) morning.accent else morning.cardEdge
-    Row(
-        modifier              = Modifier
-            .clip(RoundedCornerShape(50))
+    val bg     = if (active) morning.accentSoft else androidx.compose.ui.graphics.Color.Transparent
+    val fg     = if (active) morning.accent     else morning.textSecondary
+    val border = if (active) morning.accent     else morning.cardEdge
+    Box(
+        modifier         = Modifier
+            .clip(RoundedCornerShape(999.dp))
             .background(bg)
-            .border(width = 1.dp, color = border, shape = RoundedCornerShape(50))
+            .border(width = 1.dp, color = border, shape = RoundedCornerShape(999.dp))
             .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-        verticalAlignment     = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        contentAlignment = Alignment.Center,
     ) {
         Text(
-            text  = label,
-            style = MorningType.ButtonLabel,
-            color = fg,
+            text     = label,
+            style    = MorningType.ButtonLabel.copy(fontSize = 12.5.sp, letterSpacing = 0.1.sp),
+            color    = fg,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
-        count?.let {
-            Text(
-                text  = it.toString(),
-                style = MorningType.MetaMono,
-                color = if (active) morning.onAccent.copy(alpha = 0.7f) else morning.textMuted,
-            )
-        }
     }
 }
 
-// --- Empty state + delete dialog ------------------------------------------
+// --- Empty state ----------------------------------------------------------
 
 @Composable
 private fun EmptyState(hasAnyPosts: Boolean) {
@@ -384,45 +438,12 @@ private fun EmptyState(hasAnyPosts: Boolean) {
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            text      = if (hasAnyPosts) "Clear the search or pick a different chip." else "Share posts to Morning Agent from any app — they’ll show up here.",
+            text      = if (hasAnyPosts) "Clear the search or pick a different chip." else "Share posts to Morning Agent from any app — they'll show up here.",
             style     = MorningType.BodyReadItalic,
             color     = morning.textSecondary,
             textAlign = TextAlign.Center,
         )
     }
-}
-
-@Composable
-private fun DeleteConfirmDialog(onDismiss: () -> Unit, onConfirm: () -> Unit) {
-    val morning = MaterialTheme.morning
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor   = morning.surface,
-        title = {
-            Text(
-                text  = "Delete this saved post?",
-                style = MorningType.SectionHeading,
-                color = morning.textPrimary,
-            )
-        },
-        text = {
-            Text(
-                text  = "It’ll be removed from the local cache and archived in Notion (if synced).",
-                style = MorningType.BodyReadItalic,
-                color = morning.textSecondary,
-            )
-        },
-        confirmButton = {
-            TextButton(onClick = onConfirm) {
-                Text("Delete", style = MorningType.ButtonLabel, color = morning.error)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel", style = MorningType.ButtonLabel, color = morning.textMuted)
-            }
-        },
-    )
 }
 
 // --- Previews --------------------------------------------------------------

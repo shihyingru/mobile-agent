@@ -37,5 +37,10 @@ data class SharedPost(
         const val SOURCE_TWITTER = "Twitter"
         const val SOURCE_WEB     = "Web"
         const val SOURCE_OTHER   = "Other"
+
+        // Not a SharedPost source today — added so SourceLogo can render the
+        // same monogram for the Home TaskCard, which labels every Notion task
+        // with this glyph.
+        const val SOURCE_NOTION  = "Notion"
     }
 }

@@ -1,213 +1,344 @@
 package com.luna.morningagent.ui.sharedposts.components
 
-import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
-import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.luna.morningagent.R
 import com.luna.morningagent.data.sharedposts.SharedPost
-import com.luna.morningagent.ui.home.components.SourceLogo
-import com.luna.morningagent.ui.home.components.TaskSource
+import com.luna.morningagent.ui.theme.InterFamily
 import com.luna.morningagent.ui.theme.MorningAgentTheme
 import com.luna.morningagent.ui.theme.MorningType
+import com.luna.morningagent.ui.theme.SerifReadFamily
 import com.luna.morningagent.ui.theme.morning
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlin.math.absoluteValue
+import kotlin.math.roundToInt
 import kotlin.time.toJavaInstant
+import kotlinx.coroutines.launch
 
 /**
- * v4 saved-post card. Matches the magazine flat language: surface bg + cardEdge
- * hairline, serif italic body, mono meta.
+ * Saved post card (DESIGN_SYSTEM §3.18 / §3.19).
  *
- *  Top row: source monogram · author · saved date · pending dot (when sync
- *  hasn't completed yet — small idle gold dot, mirrors StatusDot.Idle).
- *  Body:    content clamped to 3 lines, serif italic. Summary shown below
- *           when the agent has filled it in.
- *  Footer:  category chips + chevron (accent).
+ * Card chrome only carries [logo · source · author] / [timestamp · ⋯] and the
+ * body. Destructive action never lives on the card surface — Delete is reached
+ * via swipe-left (red panel) or the ⋯ overflow sheet. Unread shows as a 2 dp
+ * accent rule at the inset left edge.
  *
- * Tap = open externally (caller routes to ACTION_VIEW when URL is present, or
- *       toggles inline expand for text-only shares). Long-press = caller can
- *       show a delete confirm.
+ * Swipe behavior (two-tier):
+ *  · 0 – 36 dp drag: snaps back on release.
+ *  · 36 – 66 dp:    parks at 88 dp reveal; tap Delete to commit.
+ *  · > 66 dp:       full-bleed commit on release (no extra tap).
  */
+private val DELETE_RED = Color(0xFFE5484D)
+private val SWIPE_EASING = CubicBezierEasing(0.2f, 0.7f, 0.2f, 1f)
+
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun SavedPostCard(
     post: SharedPost,
-    expanded: Boolean,
     onTap: () -> Unit,
-    onLongPress: () -> Unit,
+    onOverflow: () -> Unit,
+    onDelete: () -> Unit,
     modifier: Modifier = Modifier,
+    bodyMaxLines: Int = 4,
 ) {
     val morning = MaterialTheme.morning
-    var pressed by remember { mutableStateOf(false) }
-    val scale by animateFloatAsState(if (pressed) 0.98f else 1f, label = "savedCardScale")
+    val density = LocalDensity.current
+    val scope = rememberCoroutineScope()
 
-    Column(
+    val revealPx  = with(density) { 88.dp.toPx() }
+    val parkPx    = with(density) { 36.dp.toPx() }
+    val commitPx  = with(density) { 66.dp.toPx() }
+
+    val offsetX = remember(post.localId) { Animatable(0f) }
+
+    Box(
         modifier = modifier
             .fillMaxWidth()
-            .scale(scale)
-            .clip(RoundedCornerShape(16.dp))
-            .background(morning.surface)
-            .border(width = 1.dp, color = morning.cardEdge, shape = RoundedCornerShape(16.dp))
-            .pointerInput(post.localId) {
-                detectTapGestures(
-                    onPress     = {
-                        pressed = true
-                        tryAwaitRelease()
-                        pressed = false
-                    },
-                    onTap       = { onTap() },
-                    onLongPress = { onLongPress() },
-                )
-            }
-            .padding(14.dp),
+            .clip(RoundedCornerShape(16.dp)),
     ) {
-        // Top row
+        // Underlay — red Delete panel revealed on swipe.
         Row(
-            modifier              = Modifier.fillMaxWidth(),
-            verticalAlignment     = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier              = Modifier.matchParentSize(),
+            horizontalArrangement = Arrangement.End,
         ) {
-            SourceLogo(source = mapSource(post.source), size = 16.dp)
-            post.author?.takeIf { it.isNotBlank() }?.let { author ->
-                Text(
-                    text     = author,
-                    style    = MorningType.Caption,
-                    color    = morning.textSecondary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false),
-                )
+            Box(
+                modifier         = Modifier
+                    .width(88.dp)
+                    .fillMaxHeight()
+                    .background(DELETE_RED)
+                    .combinedClickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication        = null,
+                        onClick           = {
+                            scope.launch {
+                                offsetX.animateTo(-revealPx * 4, tween(280, easing = SWIPE_EASING))
+                                onDelete()
+                            }
+                        },
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Icon(
+                        imageVector        = Icons.Rounded.Delete,
+                        contentDescription = stringResource(R.string.cd_delete_post),
+                        tint               = Color.White,
+                        modifier           = Modifier.size(18.dp),
+                    )
+                    Text(
+                        text  = "Delete",
+                        color = Color.White,
+                        style = androidx.compose.ui.text.TextStyle(
+                            fontFamily    = InterFamily,
+                            fontWeight    = FontWeight.Bold,
+                            fontSize      = 10.5.sp,
+                            letterSpacing = 0.3.sp,
+                        ),
+                    )
+                }
             }
-            Spacer(modifier = Modifier.weight(1f))
-            Text(
-                text  = formatDate(post.savedAt),
-                style = MorningType.MetaMono,
-                color = morning.textMuted,
-            )
-            if (post.pendingSync) {
-                Spacer(modifier = Modifier.size(6.dp))
-                Box(
+        }
+
+        // Card surface — translated by drag offset.
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .offset { IntOffset(offsetX.value.roundToInt(), 0) }
+                .draggable(
+                    state         = rememberDraggableState { delta ->
+                        scope.launch {
+                            val next = (offsetX.value + delta).coerceIn(-revealPx * 4, 0f)
+                            offsetX.snapTo(next)
+                        }
+                    },
+                    orientation   = Orientation.Horizontal,
+                    onDragStopped = { _ ->
+                        val absOffset = offsetX.value.absoluteValue
+                        when {
+                            absOffset > commitPx -> {
+                                offsetX.animateTo(-revealPx * 4, tween(280, easing = SWIPE_EASING))
+                                onDelete()
+                            }
+                            absOffset > parkPx -> {
+                                offsetX.animateTo(-revealPx, tween(220, easing = SWIPE_EASING))
+                            }
+                            else -> {
+                                offsetX.animateTo(0f, tween(220, easing = SWIPE_EASING))
+                            }
+                        }
+                    },
+                ),
+        ) {
+            val unread        = post.status == SharedPost.STATUS_UNREAD
+            val accent        = morning.accent
+            val railWidthPx   = with(density) { 2.dp.toPx() }
+            val railInsetPx   = with(density) { 14.dp.toPx() }
+            val railRadiusPx  = with(density) { 1.dp.toPx() }
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(morning.surface)
+                    .border(width = 1.dp, color = morning.cardEdge, shape = RoundedCornerShape(16.dp))
+                    .drawBehind {
+                        // Unread rule painted relative to the card's actual measured
+                        // size — fillMaxHeight() collapsed to 0 because the LazyColumn
+                        // item gives loose vertical constraints, so a sibling Box can't
+                        // resolve a height. drawBehind sees the real size.
+                        if (unread) {
+                            drawRoundRect(
+                                color        = accent,
+                                topLeft      = Offset(0f, railInsetPx),
+                                size         = Size(railWidthPx, size.height - 2 * railInsetPx),
+                                cornerRadius = CornerRadius(railRadiusPx, railRadiusPx),
+                            )
+                        }
+                    }
+                    .combinedClickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication        = null,
+                        onClick           = {
+                            // Tap on a parked card snaps it shut; otherwise route normally.
+                            if (offsetX.value != 0f) {
+                                scope.launch { offsetX.animateTo(0f, tween(220, easing = SWIPE_EASING)) }
+                            } else {
+                                onTap()
+                            }
+                        },
+                        onLongClick       = onOverflow,
+                    ),
+            ) {
+                Column(
                     modifier = Modifier
-                        .size(6.dp)
-                        .clip(RoundedCornerShape(50))
-                        .background(morning.gold),
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(10.dp))
-
-        // Body — content
-        Text(
-            text     = post.content,
-            style    = MorningType.Tip.copy(fontSize = androidx.compose.ui.unit.TextUnit(15f, androidx.compose.ui.unit.TextUnitType.Sp)),
-            color    = morning.textPrimary,
-            maxLines = if (expanded) Int.MAX_VALUE else 3,
-            overflow = TextOverflow.Ellipsis,
-        )
-
-        // Agent summary (italic accent — "why this mattered")
-        post.summary?.takeIf { it.isNotBlank() }?.let { summary ->
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text     = summary,
-                style    = MorningType.BodyReadItalic.copy(fontSize = androidx.compose.ui.unit.TextUnit(13f, androidx.compose.ui.unit.TextUnitType.Sp)),
-                color    = morning.textSecondary,
-                maxLines = if (expanded) Int.MAX_VALUE else 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // Footer — categories + tap-to-open chevron
-        Row(
-            modifier              = Modifier.fillMaxWidth(),
-            verticalAlignment     = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            CategoryChipRow(categories = post.categories, modifier = Modifier.weight(1f))
-            if (post.url != null) {
-                Icon(
-                    imageVector        = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
-                    contentDescription = null,
-                    tint               = morning.accent.copy(alpha = 0.7f),
-                    modifier           = Modifier.size(16.dp),
-                )
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, end = 14.dp, top = 14.dp, bottom = 14.dp),
+                ) {
+                    PostMetaRow(post = post, onOverflow = onOverflow)
+                    Spacer(modifier = Modifier.height(9.dp))
+                    Text(
+                        text     = post.content,
+                        color    = morning.textPrimary,
+                        style    = androidx.compose.ui.text.TextStyle(
+                            fontFamily    = SerifReadFamily,
+                            fontWeight    = FontWeight.Normal,
+                            fontSize      = 15.5.sp,
+                            lineHeight    = (15.5f * 1.45f).sp,
+                            letterSpacing = (-0.05).sp,
+                        ),
+                        maxLines = bodyMaxLines,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         }
     }
+
+    // Reset swipe state if the underlying post id ever rebinds (LazyColumn reuse).
+    LaunchedEffect(post.localId) { offsetX.snapTo(0f) }
 }
 
 @Composable
-private fun CategoryChipRow(categories: List<String>, modifier: Modifier = Modifier) {
+private fun PostMetaRow(post: SharedPost, onOverflow: () -> Unit) {
     val morning = MaterialTheme.morning
-    if (categories.isEmpty()) return
     Row(
-        modifier              = modifier,
+        modifier              = Modifier.fillMaxWidth(),
         verticalAlignment     = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        // Cap at 3 visible chips to keep the row tidy; the rest collapse to "+N".
-        val visible = categories.take(3)
-        val overflow = categories.size - visible.size
-        visible.forEach { name ->
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(50))
-                    .background(morning.accentSoft)
-                    .padding(horizontal = 8.dp, vertical = 3.dp),
-            ) {
-                Text(
-                    text  = name,
-                    style = MorningType.Caption.copy(fontSize = androidx.compose.ui.unit.TextUnit(10f, androidx.compose.ui.unit.TextUnitType.Sp)),
-                    color = morning.accent,
-                )
-            }
-        }
-        if (overflow > 0) {
+        Row(
+            modifier              = Modifier.weight(1f),
+            verticalAlignment     = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(7.dp),
+        ) {
+            CategoryGlyph(post = post)
             Text(
-                text  = "+$overflow",
-                style = MorningType.Caption.copy(fontSize = androidx.compose.ui.unit.TextUnit(10f, androidx.compose.ui.unit.TextUnitType.Sp)),
-                color = morning.textMuted,
+                text     = sourceLine(post),
+                color    = morning.textSecondary,
+                style    = androidx.compose.ui.text.TextStyle(
+                    fontFamily = InterFamily,
+                    fontWeight = FontWeight.Medium,
+                    fontSize   = 12.sp,
+                ),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Text(
+            text  = formatDate(post.savedAt),
+            color = morning.textMuted,
+            style = MorningType.Caption,
+        )
+        Box(
+            modifier         = Modifier
+                .size(width = 26.dp, height = 22.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .combinedClickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication        = null,
+                    onClick           = onOverflow,
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector        = Icons.Rounded.MoreHoriz,
+                contentDescription = stringResource(R.string.cd_post_overflow),
+                tint               = morning.textMuted,
+                modifier           = Modifier.size(16.dp),
             )
         }
     }
 }
 
-private fun mapSource(source: String): TaskSource = TaskSource.Notion
-// All shipped SourceLogo variants are Notion-only until commit 4 ships
-// Threads/Twitter/Web glyphs — until then everyone gets the "N". The data
-// still records source correctly, so when SourceLogo grows new branches
-// the cards will pick them up automatically.
+/**
+ * Bordered monochrome 14dp tile showing the first category's initial. Source
+ * info already lives in the meta text ("Threads · @author"), so the glyph
+ * surfaces the category at a glance instead of duplicating the source name.
+ * Falls back to a middle dot while categorization is in flight.
+ */
+@Composable
+private fun CategoryGlyph(post: SharedPost) {
+    val morning = MaterialTheme.morning
+    val glyph = when {
+        post.pendingCategorization      -> "·"
+        post.categories.isEmpty()       -> "·"
+        else -> post.categories.first().firstOrNull()?.uppercase() ?: "·"
+    }
+    Box(
+        modifier = Modifier
+            .size(14.dp)
+            .clip(RoundedCornerShape(4.dp))
+            .border(width = 1.dp, color = morning.cardEdge, shape = RoundedCornerShape(4.dp)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text  = glyph,
+            color = morning.textSecondary,
+            style = androidx.compose.ui.text.TextStyle(
+                fontFamily    = InterFamily,
+                fontWeight    = FontWeight.SemiBold,
+                fontSize      = 8.5.sp,
+                letterSpacing = (-0.3).sp,
+            ),
+        )
+    }
+}
+
+private fun sourceLine(post: SharedPost): String {
+    val author = post.author?.takeIf { it.isNotBlank() }
+    return if (author != null) "${post.source} · $author" else post.source
+}
 
 private val DATE_FORMAT: DateTimeFormatter =
     DateTimeFormatter.ofPattern("MMM d · h:mm a", Locale.ENGLISH)
@@ -224,30 +355,29 @@ private fun SavedPostCardPreview() {
                 post = SharedPost(
                     localId    = "1",
                     notionId   = "abc",
-                    content    = "Almost everything in today's AI hype cycle was sketched out around 2019–2020 — transformers were already standard, scaling laws public, RLHF being explored.",
+                    content    = "The best way to predict the future is to read research papers from five years ago. Almost everything in today's AI hype cycle was sketched out around 2019–2020.",
                     source     = SharedPost.SOURCE_THREADS,
                     author     = "@haileymocaixi",
                     url        = "https://threads.net/@haileymocaixi/post/test",
-                    categories = listOf("Tech", "Ideas"),
-                    summary    = "Argues today's AI breakthroughs were largely sketched out years ago.",
                     savedAt    = kotlin.time.Clock.System.now(),
                 ),
-                expanded    = false,
                 onTap       = {},
-                onLongPress = {},
+                onOverflow  = {},
+                onDelete    = {},
             )
             SavedPostCard(
                 post = SharedPost(
-                    localId    = "2",
-                    notionId   = null,
-                    content    = "Quick text-only note. No URL, just an idea.",
-                    source     = SharedPost.SOURCE_OTHER,
-                    savedAt    = kotlin.time.Clock.System.now(),
+                    localId     = "2",
+                    notionId    = null,
+                    content     = "Quick text-only note. No URL, just an idea.",
+                    source      = SharedPost.SOURCE_OTHER,
+                    savedAt     = kotlin.time.Clock.System.now(),
                     pendingSync = true,
+                    status      = SharedPost.STATUS_DONE,
                 ),
-                expanded    = false,
                 onTap       = {},
-                onLongPress = {},
+                onOverflow  = {},
+                onDelete    = {},
             )
         }
     }

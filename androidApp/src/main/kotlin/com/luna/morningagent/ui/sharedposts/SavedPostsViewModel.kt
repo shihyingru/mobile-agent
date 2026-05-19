@@ -60,6 +60,18 @@ class SavedPostsViewModel(application: Application) : AndroidViewModel(applicati
         dbId  = tokenStore.getSharedPostsDbId()
     }
 
+    /**
+     * Fetch the Notion DB and merge into the local cache. Cached posts render
+     * immediately from `refresh()`; this call updates them in the background
+     * and re-reads. Silent on network failure — cached state stands.
+     */
+    fun refreshFromNotion() {
+        viewModelScope.launch {
+            runCatching { repo.refreshFromNotion() }
+            refresh()
+        }
+    }
+
     fun onSearchChange(value: String) { search = value }
     fun onCategorySelect(name: String?) { activeCategory = name }
     fun onSetupUrlChange(value: String) {
