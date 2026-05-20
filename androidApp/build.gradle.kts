@@ -83,11 +83,9 @@ dependencies {
 
     // Phase 2 — agent + secure storage + scheduling
     implementation(libs.koog.agents)              // Koog single artifact (Gemini client + MCP client)
-    implementation(libs.androidx.security.crypto) // Kept for the one-shot ESP→DataStore migration read; remove in a follow-up once verified.
     implementation(libs.androidx.work.runtime.ktx)
 
     // Secure storage = Preferences DataStore for storage + Tink AEAD for per-value encryption.
-    // Replaces the (deprecated) androidx.security EncryptedSharedPreferences.
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.tink.android)
 
