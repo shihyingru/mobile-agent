@@ -6,6 +6,10 @@
 
 Morning Agent — Luna's personal Android app. Wakes at 9:00 AM, fetches high-priority Notion tasks, asks Gemini for efficiency tips, delivers a briefing notification. Personal tool, not a product — optimize for clarity and craft, not enterprise concerns.
 
+## Workflow
+
+Gitflow. **PRs target `develop`, never `main`.** `main` is release-only — it advances by merging `develop` → `main` when cutting a release. Feature branches (`feature/...`, `fix/...`, `docs/...`) branch off `develop` and PR back into `develop`. Stacked PRs are fine: base the second on the first's branch and retarget to `develop` after the first merges.
+
 ## Non-obvious decisions
 
 - **Kotlin 2.3 jvmTarget DSL.** The AGP-side `android { kotlinOptions {} }` block was removed in 2.3. `jvmTarget` lives in a top-level `kotlin { compilerOptions { jvmTarget.set(JvmTarget.JVM_17) } }`. Keep that pattern.
