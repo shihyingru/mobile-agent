@@ -2,15 +2,11 @@ package com.luna.morningagent.data.secure
 
 import android.content.Context
 import android.util.Base64
-import android.util.Log
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
-import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKey
-import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -23,17 +19,15 @@ import kotlinx.coroutines.runBlocking
  * Token + preferences store backed by Preferences DataStore with per-value
  * Tink AEAD encryption for sensitive strings.
  *
- * Public surface is unchanged from the previous `EncryptedSharedPreferences`
- * implementation — callers still use synchronous `get`/`save` methods. The
- * sync feel is preserved by warming an in-memory cache on construction
- * (one `runBlocking` against DataStore's first emission) and then serving
- * every read from that cache. Writes update the cache immediately and fire
- * an async `dataStore.edit { }` on a private IO scope.
+ * Callers use synchronous `get`/`save` methods. The sync feel is preserved
+ * by warming an in-memory cache on construction (one `runBlocking` against
+ * DataStore's first emission) and then serving every read from that cache.
+ * Writes update the cache immediately and fire an async `dataStore.edit { }`
+ * on a private IO scope.
  *
  * Encryption split:
  *  - String values (API keys, tokens, briefing JSON, model ids) are sealed
- *    via Tink AEAD and stored as base64 ciphertext. Parity with the old
- *    EncryptedSharedPreferences which encrypted everything as a string.
+ *    via Tink AEAD and stored as base64 ciphertext.
  *  - Booleans / ints (auto-run flag, briefing hour/minute) are not secrets;
  *    they sit in DataStore natively. Encrypting them would just burn CPU.
  *
@@ -41,12 +35,6 @@ import kotlinx.coroutines.runBlocking
  * (`runCatching` in [unsealString]) — getter returns null/default, user
  * re-enters the value in Settings. Hard Keystore failure at construction
  * throws — there's nothing useful to do with a broken crypto layer.
- *
- * Migration: on first construction after the upgrade, if the legacy
- * `morning_agent_secrets.xml` file still exists, every known key is copied
- * into DataStore (sealed by Tink in the same write) and the legacy file is
- * deleted via [Context.deleteSharedPreferences]. Subsequent launches skip
- * the migration path entirely.
  */
 class TokenStore(context: Context) {
 
@@ -58,7 +46,6 @@ class TokenStore(context: Context) {
 
     init {
         runBlocking {
-            migrateLegacyIfNeeded()
             populateCacheFrom(dataStore.data.first())
         }
     }
@@ -156,57 +143,7 @@ class TokenStore(context: Context) {
         }
     }
 
-    // --- Legacy ESP → DataStore migration ----------------------------------
-
-    private suspend fun migrateLegacyIfNeeded() {
-        val legacyFile = File(
-            File(appContext.dataDir, "shared_prefs"),
-            "$LEGACY_FILE_NAME.xml",
-        )
-        if (!legacyFile.exists()) return
-
-        try {
-            val masterKey = MasterKey.Builder(appContext)
-                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-                .build()
-            val legacy = EncryptedSharedPreferences.create(
-                appContext,
-                LEGACY_FILE_NAME,
-                masterKey,
-                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
-            )
-
-            dataStore.edit { prefs ->
-                STRING_KEYS.forEach { key ->
-                    legacy.getString(key, null)?.let { value ->
-                        prefs[stringPreferencesKey(key)] = sealString(value)
-                    }
-                }
-                BOOLEAN_KEYS.forEach { key ->
-                    if (legacy.contains(key)) {
-                        prefs[booleanPreferencesKey(key)] = legacy.getBoolean(key, false)
-                    }
-                }
-                INT_KEYS.forEach { key ->
-                    if (legacy.contains(key)) {
-                        prefs[intPreferencesKey(key)] = legacy.getInt(key, 0)
-                    }
-                }
-            }
-            appContext.deleteSharedPreferences(LEGACY_FILE_NAME)
-            Log.i(TAG, "Migrated $LEGACY_FILE_NAME → DataStore; legacy file deleted.")
-        } catch (e: Exception) {
-            // Leave the legacy file in place so we can retry next launch. The
-            // cache still warms from whatever DataStore already has.
-            Log.w(TAG, "Migration failed; legacy prefs left in place: ${e.message}")
-        }
-    }
-
     companion object {
-        private const val TAG              = "TokenStore"
-        private const val LEGACY_FILE_NAME = "morning_agent_secrets"
-
         private const val KEY_GEMINI          = "gemini_api_key"
         private const val KEY_NOTION          = "notion_token"
         private const val KEY_NOTION_DB       = "notion_database_id"

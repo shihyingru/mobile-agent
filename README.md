@@ -4,7 +4,7 @@ A personal Android app that fetches high-priority tasks from Notion at a user-pi
 
 ## Stack
 
-Kotlin 2.3 · Jetpack Compose (Material 3) · Compose BOM 2026.04.01 · Koog 0.8 · Ktor 3.4 · WorkManager · EncryptedSharedPreferences. KMP-shaped, Android target only. Min SDK 26, target SDK 35, single-activity, edge-to-edge.
+Kotlin 2.3 · Jetpack Compose (Material 3) · Compose BOM 2026.04.01 · Koog 0.8 · Ktor 3.4 · WorkManager · Preferences DataStore + Tink AEAD. KMP-shaped, Android target only. Min SDK 26, target SDK 35, single-activity, edge-to-edge.
 
 ## Build
 
@@ -17,7 +17,7 @@ Open the project in Android Studio Koala or newer.
 
 ## Configuration
 
-API keys (provider key — Gemini or Claude — Notion integration token, Notion database URL/ID) are entered in the in-app Settings screen and persisted with `EncryptedSharedPreferences`. Nothing is checked in.
+API keys (provider key — Gemini or Claude — Notion integration token, Notion database URL/ID) are entered in the in-app Settings screen and persisted in Preferences DataStore with per-value Tink AEAD encryption. Nothing is checked in.
 
 The Notion database needs these columns:
 
