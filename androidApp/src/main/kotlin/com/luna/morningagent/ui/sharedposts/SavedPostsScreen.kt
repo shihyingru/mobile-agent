@@ -301,15 +301,15 @@ private fun SetupCard(
             color = morning.textPrimary,
         )
         Text(
-            text  = "Paste the Notion page URL where Morning Agent should create its Shared Posts database. Pending saves flush automatically.",
+            text  = "Paste a Notion page URL (we'll create the Shared Posts database under it) or an existing Shared Posts database URL to reconnect. Pending saves flush automatically.",
             style = MorningType.BodyReadItalic.copy(fontSize = 13.sp),
             color = morning.textSecondary,
         )
         SettingsInput(
-            label         = "Notion page URL",
+            label         = "Notion page or database URL",
             value         = urlDraft,
             onValueChange = onChange,
-            placeholder   = "https://www.notion.so/Your-Page-…",
+            placeholder   = "https://www.notion.so/…",
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
         )
         when (state) {

@@ -124,34 +124,47 @@ class SavedPostsViewModel(application: Application) : AndroidViewModel(applicati
     // --- Setup --------------------------------------------------------------
 
     /**
-     * One-time setup. Parses a Notion page URL → 32-hex page id, asks Notion
-     * to create the SharedPosts DB under it, stores the new dbId, then flushes
-     * any cached pendingSync posts to the new DB.
+     * One-time setup. Accepts either:
+     *  - A Notion **page** URL — provisions a fresh Shared Posts DB under it.
+     *  - A Notion **database** URL — reconnects to an existing DB (e.g. the
+     *    Settings was wiped but the user still has the original DB they want
+     *    to keep using).
+     *
+     * URLs that contain `?v=<viewId>` are Notion database-view URLs; anything
+     * else is treated as a page URL. The 32-hex id is extracted the same way
+     * either path.
      */
     fun runSetup() {
         val rawUrl = setupUrlDraft.trim()
         if (rawUrl.isEmpty()) {
-            setupState = SetupState.Error("Paste a Notion page URL to host the DB.")
+            setupState = SetupState.Error("Paste a Notion page or database URL.")
             return
         }
-        val parentPageId = extractNotionDatabaseId(rawUrl)
-        if (parentPageId.length != 32 || !parentPageId.all { it.isDigit() || it in 'a'..'f' }) {
-            setupState = SetupState.Error("That doesn't look like a Notion page URL.")
+        val id = extractNotionDatabaseId(rawUrl)
+        if (id.length != 32 || !id.all { c -> c.isDigit() || c in 'a'..'f' }) {
+            setupState = SetupState.Error("That doesn't look like a Notion URL.")
             return
         }
+        val isDatabaseUrl = "?v=" in rawUrl
         setupState = SetupState.InProgress
         viewModelScope.launch {
-            val newDbId = runCatching { notionClient.createDatabase(parentPageId) }
-                .getOrElse { e ->
-                    setupState = SetupState.Error(
-                        if (e is NotionConfigMissingException) "Notion token not set in Settings."
-                        else "Couldn't create the DB — ${e.message ?: e::class.simpleName}",
-                    )
-                    return@launch
-                }
-            tokenStore.saveSharedPostsDbId(newDbId)
-            dbId = newDbId
-            flushPendingPosts(newDbId)
+            val finalDbId = if (isDatabaseUrl) {
+                // Reuse an existing Shared Posts DB. Skip createDatabase —
+                // Notion rejects "createDatabase parented by a database".
+                id
+            } else {
+                runCatching { notionClient.createDatabase(id) }
+                    .getOrElse { e ->
+                        setupState = SetupState.Error(
+                            if (e is NotionConfigMissingException) "Notion token not set in Settings."
+                            else "Couldn't create the DB — ${e.message ?: e::class.simpleName}",
+                        )
+                        return@launch
+                    }
+            }
+            tokenStore.saveSharedPostsDbId(finalDbId)
+            dbId = finalDbId
+            flushPendingPosts(finalDbId)
             setupState = SetupState.Done
             setupUrlDraft = ""
             refresh()
