@@ -1,0 +1,701 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Saved Posts — redesign</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; padding: 0; min-height: 100%; background: #04222F; }
+  body { font-family: 'Inter', system-ui, sans-serif; }
+  * { box-sizing: border-box; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="themes.jsx"></script>
+
+<script type="text/babel" data-presets="react">
+// ════════════════════════════════════════════════════════════════════════
+// Saved Posts — redesign with 4 elegant delete alternatives
+//
+// Problems with the original × in the corner:
+//  · Destructive action is the most visually-loud thing on a calm page.
+//  · It crowds the meta row (chip + author + date already live there).
+//  · It encourages mis-taps; saved content is durable, not chrome.
+//
+// Variants below all remove the corner ×. Pick one (or mix-and-match):
+//  A "Baseline+" — no destructive action visible. Tap card to read full,
+//                   destructive actions live inside the detail sheet.
+//  B "Swipe"    — swipe a card left to reveal Archive + Delete (iOS-native).
+//  C "Long-press"— hold to enter multi-select; bulk actions in the top bar.
+//  D "Overflow" — single ⋯ button per card → bottom sheet of actions.
+//  E "Edit mode"— top-bar Edit button reveals red ⊖ badges (iOS classic).
+//
+// Other small refinements throughout:
+//  · Unread → 2px left rule instead of a corner dot.
+//  · Source = small inline chip ("Threads · @haileymocaixi"), not stacked.
+//  · Compact pending-sync strip replaces the giant card block.
+//  · "Show more" chevron sits flush-right at card baseline, not floating.
+// ════════════════════════════════════════════════════════════════════════
+
+const POSTS = [
+  { id: 1, glyph: 'T', bg: '#000000', fg: '#FFFFFF',
+    author: 'haileymocaixi', source: 'Threads',
+    when: '4:20 PM', unread: true,
+    body: 'The best way to predict the future is to read research papers from five years ago. Almost everything in today\u2019s AI hype cycle was sketched out around 2019\u20132020.' },
+  { id: 2, glyph: 'X', bg: '#0A0A0A', fg: '#FFFFFF',
+    author: '@somebody', source: 'X',
+    when: '3:44 PM', unread: true,
+    body: 'Third one — just to see how this card looks with very little body text.' },
+  { id: 3, glyph: 'O', bg: '#0A0A0A', fg: '#FFFFFF',
+    author: 'sama', source: 'OpenAI',
+    when: '3:43 PM', unread: true,
+    body: 'Second test post — pure text, no URL.' },
+  { id: 4, glyph: 'T', bg: '#000000', fg: '#FFFFFF',
+    author: 'yingrushih', source: 'Threads',
+    when: 'May 17', unread: false,
+    body: 'Working on a calmer feed reader. The trick is filtering at save-time, not read-time — that\u2019s where intent lives.' },
+];
+
+const FILTERS = [
+  { id: 'all',    label: 'All',    count: 12 },
+  { id: 'unread', label: 'Unread', count: 3  },
+  { id: 'misc',   label: 'Misc',   count: 3  },
+];
+
+// ─── Icons ──────────────────────────────────────────────────────────────
+function I({ name, size = 16, w = 1.6 }) {
+  const s = { width: size, height: size, display: 'block', flexShrink: 0 };
+  const p = { fill: 'none', stroke: 'currentColor', strokeWidth: w, strokeLinecap: 'round', strokeLinejoin: 'round' };
+  switch (name) {
+    case 'back':    return <svg style={s} viewBox="0 0 24 24"><path {...p} d="M15 5l-7 7 7 7"/></svg>;
+    case 'close':   return <svg style={s} viewBox="0 0 24 24"><path {...p} d="M6 6l12 12M18 6L6 18"/></svg>;
+    case 'search':  return <svg style={s} viewBox="0 0 24 24"><circle {...p} cx="11" cy="11" r="6.5"/><path {...p} d="M16 16l4 4"/></svg>;
+    case 'arrow':   return <svg style={s} viewBox="0 0 24 24"><path {...p} d="M5 12h14M13 5l7 7-7 7"/></svg>;
+    case 'archive': return <svg style={s} viewBox="0 0 24 24"><rect {...p} x="3" y="5" width="18" height="4" rx="1"/><path {...p} d="M5 9v10h14V9M10 13h4"/></svg>;
+    case 'trash':   return <svg style={s} viewBox="0 0 24 24"><path {...p} d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/></svg>;
+    case 'more':    return <svg style={s} viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.5" fill="currentColor"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/><circle cx="19" cy="12" r="1.5" fill="currentColor"/></svg>;
+    case 'link':    return <svg style={s} viewBox="0 0 24 24"><path {...p} d="M10 14a4 4 0 005.66 0l3-3a4 4 0 10-5.66-5.66L11.5 7M14 10a4 4 0 00-5.66 0l-3 3a4 4 0 105.66 5.66L12.5 17"/></svg>;
+    case 'send':    return <svg style={s} viewBox="0 0 24 24"><path {...p} d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>;
+    case 'plus':    return <svg style={s} viewBox="0 0 24 24"><path {...p} d="M12 5v14M5 12h14"/></svg>;
+    case 'check':   return <svg style={s} viewBox="0 0 24 24"><path {...p} d="M5 12.5l4.5 4.5L19 7.5"/></svg>;
+    default: return null;
+  }
+}
+function MinusBadge({ size = 22 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" style={{ flexShrink: 0, display: 'block' }}>
+      <circle cx="12" cy="12" r="11" fill="#E5484D"/>
+      <path d="M6.5 12h11" stroke="#FFFFFF" strokeWidth="2.4" strokeLinecap="round"/>
+    </svg>
+  );
+}
+function CheckCircle({ on, t }) {
+  return (
+    <div style={{
+      width: 22, height: 22, borderRadius: '50%', flexShrink: 0,
+      background: on ? t.accent : 'transparent',
+      border: `1.6px solid ${on ? t.accent : t.inkMute}`,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+    }}>
+      {on && <I name="check" size={12} w={3} />}
+    </div>
+  );
+}
+
+const btnReset = { background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, lineHeight: 0 };
+
+// ─── Source chip ────────────────────────────────────────────────────────
+function SourceChip({ p, t }) {
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 7,
+      fontFamily: SANS, fontSize: 12, fontWeight: 500, color: t.inkSoft,
+      minWidth: 0, overflow: 'hidden',
+    }}>
+      <span style={{
+        width: 14, height: 14, borderRadius: 3,
+        background: p.bg, color: p.fg,
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        fontFamily: SANS, fontWeight: 700, fontSize: 8.5,
+        letterSpacing: '-0.3px', flexShrink: 0,
+      }}>{p.glyph}</span>
+      <span style={{
+        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0,
+      }}>{p.source} · {p.author}</span>
+    </span>
+  );
+}
+
+// ─── Post body (shared) ─────────────────────────────────────────────────
+function PostMeta({ p, t, rightSlot }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+    }}>
+      <SourceChip p={p} t={t} />
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
+        fontFamily: MONO, fontSize: 10.5, fontWeight: 500,
+        color: t.inkMute, letterSpacing: '0.3px',
+      }}>
+        <span>{p.when}</span>
+        {rightSlot}
+      </div>
+    </div>
+  );
+}
+function PostText({ p, t }) {
+  return (
+    <div style={{
+      fontFamily: SERIF_READ, fontSize: 15.5, lineHeight: 1.45,
+      color: t.ink, textWrap: 'pretty', letterSpacing: '-0.05px',
+    }}>{p.body}</div>
+  );
+}
+
+// ─── Card surface (theme + unread rule, no destructive chrome) ──────────
+function CardShell({ p, t, children, onClick, selected, style = {} }) {
+  return (
+    <div onClick={onClick} style={{
+      position: 'relative',
+      background: t.card,
+      border: `1px solid ${selected ? t.accent : t.cardEdge}`,
+      borderRadius: 16,
+      padding: '14px 14px 14px 16px',
+      boxShadow: t.cardShadow,
+      cursor: onClick ? 'pointer' : 'default',
+      ...style,
+    }}>
+      {/* Unread rule */}
+      {p.unread && (
+        <div style={{
+          position: 'absolute', left: 0, top: 14, bottom: 14, width: 2,
+          background: t.accent, borderRadius: 2,
+        }} />
+      )}
+      {children}
+    </div>
+  );
+}
+
+// ─── A. Baseline+ : no destructive UI on card. Read-first.
+function CardA({ p, t }) {
+  return (
+    <CardShell p={p} t={t}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
+        <PostMeta p={p} t={t} />
+        <PostText p={p} t={t} />
+      </div>
+    </CardShell>
+  );
+}
+
+// ─── B. Swipe : Archive + Delete revealed beneath, card translates left.
+function CardB({ p, t, revealed = false }) {
+  const offset = revealed ? 144 : 0;
+  return (
+    <div style={{ position: 'relative', borderRadius: 16, overflow: 'hidden' }}>
+      <div style={{
+        position: 'absolute', inset: 0, display: 'flex', justifyContent: 'flex-end',
+      }}>
+        <div style={{
+          width: 72, background: 'rgba(165,141,102,0.95)',
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4,
+          color: '#FFFFFF',
+        }}>
+          <I name="archive" size={18} w={1.7} />
+          <span style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 600, letterSpacing: '0.3px' }}>Archive</span>
+        </div>
+        <div style={{
+          width: 72, background: '#E5484D',
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4,
+          color: '#FFFFFF',
+        }}>
+          <I name="trash" size={18} w={1.7} />
+          <span style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 700, letterSpacing: '0.3px' }}>Delete</span>
+        </div>
+      </div>
+      <div style={{
+        transform: `translateX(-${offset}px)`,
+        transition: 'transform 280ms cubic-bezier(.2,.7,.2,1)',
+        position: 'relative',
+      }}>
+        <CardShell p={p} t={t}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
+            <PostMeta p={p} t={t} />
+            <PostText p={p} t={t} />
+          </div>
+        </CardShell>
+      </div>
+    </div>
+  );
+}
+
+// ─── C. Long-press : multi-select with check circles, header morphs.
+function CardC({ p, t, selected }) {
+  return (
+    <CardShell p={p} t={t} selected={selected} style={{ paddingLeft: 50 }}>
+      <div style={{
+        position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)',
+      }}>
+        <CheckCircle on={selected} t={t} />
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
+        <PostMeta p={p} t={t} />
+        <PostText p={p} t={t} />
+      </div>
+    </CardShell>
+  );
+}
+
+// ─── D. Overflow : single ⋯ button per card.
+function CardD({ p, t }) {
+  return (
+    <CardShell p={p} t={t}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
+        <PostMeta p={p} t={t} rightSlot={
+          <button style={{
+            ...btnReset, color: t.inkMute, padding: 4, margin: '-4px -6px -4px 0',
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            width: 26, height: 22, borderRadius: 6,
+          }}>
+            <I name="more" size={16} w={1.8} />
+          </button>
+        }/>
+        <PostText p={p} t={t} />
+      </div>
+    </CardShell>
+  );
+}
+
+// ─── E. Edit mode : iOS-classic ⊖ badge.
+function CardE({ p, t, editing = true }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 12,
+      transform: editing ? 'translateX(0)' : 'translateX(-30px)',
+      transition: 'transform 240ms cubic-bezier(.2,.7,.2,1)',
+    }}>
+      {editing && <MinusBadge size={22} />}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <CardShell p={p} t={t}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
+            <PostMeta p={p} t={t} />
+            <PostText p={p} t={t} />
+          </div>
+        </CardShell>
+      </div>
+    </div>
+  );
+}
+
+// ─── Pending sync strip (compact) ───────────────────────────────────────
+function SyncStrip({ t }) {
+  return (
+    <button style={{
+      ...btnReset,
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+      width: '100%',
+      padding: '10px 12px 10px 14px',
+      background: 'rgba(165,141,102,0.10)',
+      border: `1px solid rgba(165,141,102,0.32)`,
+      borderRadius: 12,
+      textAlign: 'left',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 11, minWidth: 0 }}>
+        <span style={{
+          width: 8, height: 8, borderRadius: '50%', background: t.gold, flexShrink: 0,
+        }} />
+        <div style={{ minWidth: 0 }}>
+          <div style={{
+            fontFamily: SANS, fontSize: 13, fontWeight: 600, color: t.ink, lineHeight: 1.2,
+          }}>4 saves waiting</div>
+          <div style={{
+            marginTop: 2,
+            fontFamily: SERIF_READ, fontStyle: 'italic',
+            fontSize: 12, color: t.inkSoft, lineHeight: 1.3,
+          }}>Finish Notion sync to flush</div>
+        </div>
+      </div>
+      <span style={{ color: t.gold, display: 'inline-flex', alignItems: 'center', gap: 6,
+        fontFamily: SANS, fontSize: 12, fontWeight: 600, letterSpacing: '0.1px', flexShrink: 0,
+      }}>
+        Set up <I name="arrow" size={13} w={1.8}/>
+      </span>
+    </button>
+  );
+}
+
+// ─── Search row ─────────────────────────────────────────────────────────
+function SearchRow({ t }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 10,
+      padding: '10px 12px',
+      background: t.card,
+      border: `1px solid ${t.cardEdge}`,
+      borderRadius: 12,
+      color: t.inkMute,
+    }}>
+      <I name="search" size={15} w={1.7} />
+      <span style={{ fontFamily: SANS, fontSize: 13, color: t.inkMute }}>
+        Search content, author, source
+      </span>
+    </div>
+  );
+}
+
+// ─── Filter chips ───────────────────────────────────────────────────────
+function FilterRow({ t, active = 'all' }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+      {FILTERS.map(f => {
+        const on = f.id === active;
+        return (
+          <button key={f.id} style={{
+            ...btnReset,
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            padding: '6px 12px', borderRadius: 999,
+            background: on ? t.accentSoft : 'transparent',
+            border: `1px solid ${on ? t.accent : t.cardEdge}`,
+            color: on ? t.accent : t.inkSoft,
+            fontFamily: SANS, fontSize: 12.5, fontWeight: 600, letterSpacing: '0.1px',
+          }}>
+            {f.label}
+            <span style={{
+              fontFamily: MONO, fontSize: 10, fontWeight: 500,
+              color: on ? t.accent : t.inkMute, opacity: on ? 0.9 : 0.7,
+            }}>{f.count}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Header ─────────────────────────────────────────────────────────────
+function Header({ t, mode = 'default', selected = 0 }) {
+  if (mode === 'select') {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, color: t.ink, minWidth: 0 }}>
+          <button style={{ ...btnReset, color: t.ink }}><I name="close" size={20} w={1.8} /></button>
+          <span style={{ fontFamily: SERIF, fontSize: 22, color: t.ink, letterSpacing: '-0.2px' }}>
+            {selected} selected
+          </span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
+          <button style={{ ...btnReset, color: t.accent, fontFamily: SANS, fontSize: 13.5, fontWeight: 600 }}>Archive</button>
+          <button style={{ ...btnReset, color: '#E5484D', fontFamily: SANS, fontSize: 13.5, fontWeight: 700 }}>Delete</button>
+        </div>
+      </div>
+    );
+  }
+  if (mode === 'edit') {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <span style={{ fontFamily: SERIF, fontSize: 26, color: t.ink, letterSpacing: '-0.3px', lineHeight: 1 }}>Saved</span>
+        <button style={{ ...btnReset, color: t.accent, fontFamily: SANS, fontSize: 13.5, fontWeight: 700 }}>Done</button>
+      </div>
+    );
+  }
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <button style={{ ...btnReset, color: t.ink, padding: 4, marginLeft: -4 }}>
+          <I name="back" size={20} w={1.8} />
+        </button>
+        <span style={{ fontFamily: SERIF, fontSize: 26, color: t.ink, letterSpacing: '-0.3px', lineHeight: 1 }}>
+          Saved
+        </span>
+      </div>
+      <span style={{
+        fontFamily: MONO, fontSize: 10, fontWeight: 600,
+        letterSpacing: '2px', textTransform: 'uppercase', color: t.inkMute,
+      }}>12 items</span>
+    </div>
+  );
+}
+
+// ─── Action sheet (D — overflow menu) ───────────────────────────────────
+function ActionSheet({ t }) {
+  const rows = [
+    { icon: 'send',    label: 'Send to agent',  hint: 'Add to today\u2019s briefing' },
+    { icon: 'link',    label: 'Copy link',      hint: 'Original post URL' },
+    { icon: 'archive', label: 'Archive',        hint: 'Hide from list, keep in Notion' },
+    { icon: 'trash',   label: 'Delete',         destructive: true },
+  ];
+  return (
+    <div style={{
+      position: 'absolute', left: 0, right: 0, bottom: 0,
+      background: t.card,
+      borderTopLeftRadius: 22, borderTopRightRadius: 22,
+      padding: '10px 14px 22px',
+      boxShadow: '0 -20px 40px rgba(0,0,0,0.35), 0 -1px 0 ' + t.cardEdge,
+    }}>
+      <div style={{
+        width: 36, height: 4, borderRadius: 2,
+        background: t.inkMute, opacity: 0.4,
+        margin: '4px auto 14px',
+      }} />
+      <div style={{
+        fontFamily: SERIF_READ, fontStyle: 'italic',
+        fontSize: 13, color: t.inkSoft, padding: '0 4px 12px', lineHeight: 1.4,
+      }}>“The best way to predict the future…”</div>
+      <div style={{ display: 'flex', flexDirection: 'column' }}>
+        {rows.map((r, i) => (
+          <button key={r.label} style={{
+            ...btnReset,
+            display: 'flex', alignItems: 'center', gap: 14,
+            padding: '14px 4px',
+            borderTop: i ? `1px solid ${t.cardEdge}` : 'none',
+            color: r.destructive ? '#E5484D' : t.ink,
+            fontFamily: SANS, fontSize: 14.5, fontWeight: 500,
+            textAlign: 'left',
+          }}>
+            <I name={r.icon} size={18} w={1.7} />
+            <span style={{ flex: 1 }}>{r.label}</span>
+            {r.hint && (
+              <span style={{
+                fontFamily: SERIF_READ, fontStyle: 'italic',
+                fontSize: 12, color: t.inkMute, fontWeight: 400,
+              }}>{r.hint}</span>
+            )}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Screen wrapper ─────────────────────────────────────────────────────
+function SavedScreen({ themeKey = 'dark', variant = 'baseline',
+                       showSync = true, showSheet = false }) {
+  const t = THEMES[themeKey];
+
+  let CardImpl, headerMode = 'default', selected = 0;
+  if (variant === 'baseline')      CardImpl = CardA;
+  else if (variant === 'swipe')    CardImpl = (props) => <CardB {...props} revealed={props.idx === 0} />;
+  else if (variant === 'longpress'){ CardImpl = (props) => <CardC {...props} selected={[0,2].includes(props.idx)} />; headerMode = 'select'; selected = 2; }
+  else if (variant === 'overflow') CardImpl = CardD;
+  else if (variant === 'edit')   { CardImpl = (props) => <CardE {...props} editing />; headerMode = 'edit'; }
+  else CardImpl = CardA;
+
+  return (
+    <div style={{
+      width: '100%', height: '100%',
+      background: t.bg, color: t.ink, fontFamily: SANS,
+      overflowY: 'auto', overflowX: 'hidden',
+      position: 'relative',
+    }}>
+      <div style={{
+        position: 'absolute', inset: 0, pointerEvents: 'none',
+        background: `radial-gradient(120% 60% at 50% 0%, ${t.bgWash} 0%, ${t.bg} 60%)`,
+      }} />
+
+      <div style={{
+        position: 'relative', padding: '18px 18px 32px',
+        display: 'flex', flexDirection: 'column', gap: 12,
+      }}>
+        <Header t={t} mode={headerMode} selected={selected} />
+
+        {showSync && variant !== 'longpress' && variant !== 'edit' && <SyncStrip t={t} />}
+
+        {variant !== 'longpress' && variant !== 'edit' && <SearchRow t={t} />}
+
+        <FilterRow t={t} />
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 2 }}>
+          {POSTS.map((p, idx) => <CardImpl key={p.id} p={p} t={t} idx={idx} />)}
+        </div>
+      </div>
+
+      {showSheet && <ActionSheet t={t} />}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// Phone shell
+// ════════════════════════════════════════════════════════════════════════
+function PhoneShell({ children, themeKey = 'dark', width = 380, height = 800 }) {
+  const isDark = themeKey === 'dark';
+  const t = THEMES[themeKey];
+  return (
+    <div style={{
+      width, height, borderRadius: 44, padding: 8,
+      background: isDark
+        ? 'linear-gradient(160deg, #0E3D52 0%, #04222F 100%)'
+        : 'linear-gradient(160deg, #8E9AA3 0%, #4F5C66 100%)',
+      boxShadow: isDark
+        ? '0 40px 80px rgba(4,34,47,0.55), 0 0 0 1px rgba(255,255,255,0.04) inset'
+        : '0 40px 80px rgba(8,58,79,0.30), 0 0 0 1px rgba(255,255,255,0.08) inset',
+    }}>
+      <div style={{
+        width: '100%', height: '100%', borderRadius: 36,
+        background: t.bg, overflow: 'hidden', position: 'relative',
+      }}>
+        {/* Status bar */}
+        <div style={{
+          height: 36, padding: '0 24px',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          color: t.ink, fontSize: 13, fontWeight: 600,
+          fontFamily: SANS, position: 'relative', zIndex: 2,
+        }}>
+          <span>9:41</span>
+          <div style={{
+            position: 'absolute', left: '50%', top: 12, transform: 'translateX(-50%)',
+            width: 10, height: 10, borderRadius: '50%',
+            background: isDark ? '#020F16' : '#1a1410',
+          }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <svg width="14" height="14" viewBox="0 0 16 16" fill={t.ink}>
+              <rect x="1" y="10" width="2.5" height="4" rx="0.5"/>
+              <rect x="5" y="7" width="2.5" height="7" rx="0.5"/>
+              <rect x="9" y="4" width="2.5" height="10" rx="0.5"/>
+              <rect x="13" y="1" width="2.5" height="13" rx="0.5"/>
+            </svg>
+            <svg width="14" height="14" viewBox="0 0 16 16" fill={t.ink}>
+              <path d="M8 13.3L.67 5.97a10.37 10.37 0 0114.66 0L8 13.3z"/>
+            </svg>
+            <svg width="20" height="14" viewBox="0 0 24 14" fill="none">
+              <rect x="0.5" y="0.5" width="20" height="13" rx="3" stroke={t.ink} strokeOpacity="0.5"/>
+              <rect x="2" y="2" width="14" height="10" rx="1.5" fill={t.ink}/>
+              <rect x="21.5" y="4.5" width="2" height="5" rx="1" fill={t.ink} fillOpacity="0.5"/>
+            </svg>
+          </div>
+        </div>
+        <div style={{ position: 'absolute', top: 36, left: 0, right: 0, bottom: 24, overflow: 'hidden' }}>
+          {children}
+        </div>
+        <div style={{
+          position: 'absolute', bottom: 0, left: 0, right: 0, height: 24,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <div style={{
+            width: 120, height: 4, borderRadius: 2,
+            background: isDark ? 'rgba(229,225,221,0.35)' : 'rgba(8,58,79,0.40)',
+          }}/>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Stage({ themeKey = 'dark', variant, showSync = true, showSheet = false }) {
+  return (
+    <div style={{
+      width: '100%', height: '100%',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      background: themeKey === 'dark' ? '#072D3D' : '#E5E1DD',
+      padding: 20,
+    }}>
+      <PhoneShell themeKey={themeKey}>
+        <SavedScreen themeKey={themeKey} variant={variant}
+          showSync={showSync} showSheet={showSheet} />
+      </PhoneShell>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// Canvas — 5 variants × dark theme (+ light pair for the chosen pattern)
+// ════════════════════════════════════════════════════════════════════════
+function App() {
+  return (
+    <DesignCanvas>
+      <DCSection
+        id="intro"
+        title="Saved posts · what's wrong with the X-in-corner"
+        subtitle="The original places a red × on every card. It crowds the meta row, competes with the unread dot, and makes destructive action one-tap easy on the most repeated UI element on the page. Below, four alternatives that keep the calm tone — pick one, or mix.">
+
+        <DCArtboard id="original" label="Original — × in corner (annotated)" width={420} height={840}>
+          <Stage themeKey="dark" variant="baseline" />
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection
+        id="A"
+        title="A · No destructive action on the card"
+        subtitle="The simplest fix: don't show delete at all. Tap a card to open detail; archive/delete live inside the detail sheet, where context is already loaded. The list itself becomes pure reading.">
+
+        <DCArtboard id="A-dark" label="Dark · resting" width={420} height={840}>
+          <Stage themeKey="dark" variant="baseline" />
+        </DCArtboard>
+        <DCArtboard id="A-light" label="Light · resting" width={420} height={840}>
+          <Stage themeKey="light" variant="baseline" />
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection
+        id="B"
+        title="B · Swipe left to act"
+        subtitle="iOS-native. No visible affordance at rest; swipe left on a card to reveal Archive (gold) and Delete (red). Two-tier swipe: half-swipe parks the panel; full swipe past 75% commits delete directly. First card pre-revealed below to show the panel.">
+
+        <DCArtboard id="B-dark" label="Dark · first card swiped" width={420} height={840}>
+          <Stage themeKey="dark" variant="swipe" />
+        </DCArtboard>
+        <DCArtboard id="B-light" label="Light · first card swiped" width={420} height={840}>
+          <Stage themeKey="light" variant="swipe" />
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection
+        id="C"
+        title="C · Long-press → multi-select"
+        subtitle="Hold any card for 350ms to enter selection mode. Check-circles appear on the left, the header morphs into a count + bulk actions (Archive / Delete), and the search + sync banner collapse to give the action bar focus. Best when the user actually wants to clean up.">
+
+        <DCArtboard id="C-dark" label="Dark · 2 selected" width={420} height={840}>
+          <Stage themeKey="dark" variant="longpress" />
+        </DCArtboard>
+        <DCArtboard id="C-light" label="Light · 2 selected" width={420} height={840}>
+          <Stage themeKey="light" variant="longpress" />
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection
+        id="D"
+        title="D · One affordance per card → action sheet"
+        subtitle="A single ⋯ button in the meta row replaces the corner ×. Tap it to open a bottom sheet with Send to agent, Copy link, Archive, and Delete — destructive is last and red, never the first thing the thumb finds. Same chrome cost as today, but it carries four actions instead of one.">
+
+        <DCArtboard id="D-dark-rest" label="Dark · resting" width={420} height={840}>
+          <Stage themeKey="dark" variant="overflow" />
+        </DCArtboard>
+        <DCArtboard id="D-dark-sheet" label="Dark · sheet open" width={420} height={840}>
+          <Stage themeKey="dark" variant="overflow" showSheet />
+        </DCArtboard>
+        <DCArtboard id="D-light-sheet" label="Light · sheet open" width={420} height={840}>
+          <Stage themeKey="light" variant="overflow" showSheet />
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection
+        id="E"
+        title="E · Edit mode (iOS classic ⊖)"
+        subtitle="A top-bar Edit button slides every card right and reveals a red ⊖ badge on the left. Familiar from Mail/Reminders. Keeps the corner-× emotional model the team is used to, without making it always-on. Cards stay tappable for re-ordering.">
+
+        <DCArtboard id="E-dark" label="Dark · editing" width={420} height={840}>
+          <Stage themeKey="dark" variant="edit" />
+        </DCArtboard>
+        <DCArtboard id="E-light" label="Light · editing" width={420} height={840}>
+          <Stage themeKey="light" variant="edit" />
+        </DCArtboard>
+      </DCSection>
+    </DesignCanvas>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

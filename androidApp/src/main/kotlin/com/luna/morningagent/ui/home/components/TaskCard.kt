@@ -112,7 +112,7 @@ fun TaskCard(
                     color = morning.textMuted.copy(alpha = 0.4f),
                 )
             }
-            SourceLogo(size = 16.dp)
+            SourceLogo(source = com.luna.morningagent.data.sharedposts.SharedPost.SOURCE_NOTION, size = 16.dp)
         }
 
         Spacer(modifier = Modifier.height(10.dp))

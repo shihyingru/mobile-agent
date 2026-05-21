@@ -15,12 +15,13 @@ import androidx.compose.runtime.setValue
 import com.luna.morningagent.ui.home.HomeScreen
 import com.luna.morningagent.ui.launch.LaunchScreen
 import com.luna.morningagent.ui.settings.SettingsScreen
+import com.luna.morningagent.ui.sharedposts.SavedPostsScreen
 import com.luna.morningagent.ui.theme.MorningAgentTheme
 import com.luna.morningagent.ui.theme.resolveTheme
 import java.time.LocalDateTime
 import kotlinx.coroutines.delay
 
-private enum class Screen { Launch, Home, Settings }
+private enum class Screen { Launch, Home, Settings, SavedPosts }
 
 @Composable
 fun MorningAgentApp(notificationTick: Int = 0) {
@@ -62,9 +63,13 @@ fun MorningAgentApp(notificationTick: Int = 0) {
             label        = "screenTransition",
         ) { target ->
             when (target) {
-                Screen.Launch   -> LaunchScreen(onReady = { screen = Screen.Home })
-                Screen.Home     -> HomeScreen(onNavigateToSettings = { screen = Screen.Settings })
-                Screen.Settings -> SettingsScreen(onBack = { screen = Screen.Home })
+                Screen.Launch     -> LaunchScreen(onReady = { screen = Screen.Home })
+                Screen.Home       -> HomeScreen(
+                    onNavigateToSettings   = { screen = Screen.Settings },
+                    onNavigateToSavedPosts = { screen = Screen.SavedPosts },
+                )
+                Screen.Settings   -> SettingsScreen(onBack = { screen = Screen.Home })
+                Screen.SavedPosts -> SavedPostsScreen(onBack = { screen = Screen.Home })
             }
         }
     }

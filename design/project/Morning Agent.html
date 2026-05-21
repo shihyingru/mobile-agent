@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Mobile Agent App — v4 (modular)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #E5E1DD; }
+  body { font-family: 'Inter', system-ui, sans-serif; }
+  * { box-sizing: border-box; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="themes.jsx"></script>
+<script type="text/babel" src="home-screen.jsx"></script>
+<script type="text/babel" src="launch-screen.jsx"></script>
+<script type="text/babel" src="settings-screen.jsx"></script>
+<script type="text/babel" src="saved-screen.jsx"></script>
+
+<script type="text/babel" data-presets="react">
+
+// ─────────────────────────────────────────────────────────────
+// PhoneShell — theme-aware bezel (matches v4)
+// ─────────────────────────────────────────────────────────────
+function PhoneShell({ children, themeKey = 'light', width = 380, height = 800 }) {
+  const isDark = themeKey === 'dark';
+  const t = THEMES[themeKey];
+  return (
+    <div style={{
+      width, height, borderRadius: 44, padding: 8,
+      background: isDark
+        ? 'linear-gradient(160deg, #0E3D52 0%, #04222F 100%)'
+        : 'linear-gradient(160deg, #8E9AA3 0%, #4F5C66 100%)',
+      boxShadow: isDark
+        ? '0 40px 80px rgba(4,34,47,0.55), 0 0 0 1px rgba(255,255,255,0.04) inset'
+        : '0 40px 80px rgba(8,58,79,0.30), 0 0 0 1px rgba(255,255,255,0.08) inset',
+    }}>
+      <div style={{
+        width: '100%', height: '100%', borderRadius: 36,
+        background: t.bg, overflow: 'hidden', position: 'relative',
+      }}>
+        {/* Status bar */}
+        <div style={{
+          height: 36, padding: '0 24px',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          color: t.ink, fontSize: 13, fontWeight: 600,
+          fontFamily: SANS, position: 'relative', zIndex: 2,
+        }}>
+          <span>9:41</span>
+          <div style={{
+            position: 'absolute', left: '50%', top: 12, transform: 'translateX(-50%)',
+            width: 10, height: 10, borderRadius: '50%',
+            background: isDark ? '#020F16' : '#1a1410',
+          }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <svg width="14" height="14" viewBox="0 0 16 16" fill={t.ink}>
+              <rect x="1"  y="10" width="2.5" height="4"  rx="0.5" />
+              <rect x="5"  y="7"  width="2.5" height="7"  rx="0.5" />
+              <rect x="9"  y="4"  width="2.5" height="10" rx="0.5" />
+              <rect x="13" y="1"  width="2.5" height="13" rx="0.5" />
+            </svg>
+            <svg width="14" height="14" viewBox="0 0 16 16" fill={t.ink}>
+              <path d="M8 13.3L.67 5.97a10.37 10.37 0 0114.66 0L8 13.3z" />
+            </svg>
+            <svg width="20" height="14" viewBox="0 0 24 14" fill="none">
+              <rect x="0.5" y="0.5" width="20" height="13" rx="3" stroke={t.ink} strokeOpacity="0.5" />
+              <rect x="2" y="2" width="14" height="10" rx="1.5" fill={t.ink} />
+              <rect x="21.5" y="4.5" width="2" height="5" rx="1" fill={t.ink} fillOpacity="0.5" />
+            </svg>
+          </div>
+        </div>
+
+        <div style={{
+          position: 'absolute', top: 36, left: 0, right: 0, bottom: 24,
+          overflow: 'hidden',
+        }}>{children}</div>
+
+        <div style={{
+          position: 'absolute', bottom: 0, left: 0, right: 0, height: 24,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <div style={{
+            width: 120, height: 4, borderRadius: 2,
+            background: isDark ? 'rgba(229,225,221,0.35)' : 'rgba(8,58,79,0.40)',
+          }} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// Stage helpers — center the phone on an artboard
+// ─────────────────────────────────────────────────────────────
+function PhoneStage({ themeKey, overrideHour, screen = 'home', settingsProps = {}, savedProps = {} }) {
+  let body;
+  if (screen === 'launch')   body = <LaunchScreen themeKey={themeKey} />;
+  else if (screen === 'settings') body = <SettingsScreen themeKey={themeKey} {...settingsProps} />;
+  else if (screen === 'saved')    body = <SavedScreen themeKey={themeKey} {...savedProps} />;
+  else body = <HomeScreen themeKey={themeKey} overrideHour={overrideHour} />;
+  return (
+    <div style={{
+      width: '100%', height: '100%',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      background: themeKey === 'dark' ? '#072D3D' : '#E5E1DD',
+      padding: 20,
+    }}>
+      <PhoneShell themeKey={themeKey} width={380} height={800}>{body}</PhoneShell>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// App — canvas of artboards
+// ─────────────────────────────────────────────────────────────
+function App() {
+  return (
+    <DesignCanvas>
+      <DCSection
+        id="launch"
+        title="Launch — paper & pigment"
+        subtitle="Same wordmark, two themes. Sand paper + Teal orb during the day; deep navy + Aqua orb at dusk. The orb breathes; type fades in.">
+
+        <DCArtboard id="launch-light" label="Launch · Light" width={420} height={840}>
+          <PhoneStage themeKey="light" screen="launch" />
+        </DCArtboard>
+        <DCArtboard id="launch-dark" label="Launch · Dark" width={420} height={840}>
+          <PhoneStage themeKey="dark" screen="launch" />
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection
+        id="home-live"
+        title="Home — live time"
+        subtitle="The greeting, status, and run button rotate with the device clock. The artboards below pin specific hours so all five slots are visible side-by-side.">
+
+        <DCArtboard id="home-light-live" label="Light · live time" width={420} height={840}>
+          <PhoneStage themeKey="light" />
+        </DCArtboard>
+        <DCArtboard id="home-dark-live" label="Dark · live time" width={420} height={840}>
+          <PhoneStage themeKey="dark" />
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection
+        id="home-light"
+        title="Home — light theme · time slots"
+        subtitle="Five slots: dawn (5–9), mid-morning (9–12), afternoon (12–17), evening (17–21), night (21–5). Task cards stay constant; greeting + run button + status copy shift.">
+
+        <DCArtboard id="light-dawn"      label="Light · 7 AM"   width={420} height={840}><PhoneStage themeKey="light" overrideHour={7} /></DCArtboard>
+        <DCArtboard id="light-midday"    label="Light · 10 AM"  width={420} height={840}><PhoneStage themeKey="light" overrideHour={10} /></DCArtboard>
+        <DCArtboard id="light-afternoon" label="Light · 2 PM"   width={420} height={840}><PhoneStage themeKey="light" overrideHour={14} /></DCArtboard>
+      </DCSection>
+
+      <DCSection
+        id="home-dark"
+        title="Home — dark theme · time slots"
+        subtitle="Dark mode picks up at dusk. Same card structure, deep navy ground, aqua accent. The button label shifts from “Confirm tomorrow” at 7 PM to “Plan tomorrow” at 11 PM.">
+
+        <DCArtboard id="dark-evening" label="Dark · 7 PM"  width={420} height={840}><PhoneStage themeKey="dark" overrideHour={19} /></DCArtboard>
+        <DCArtboard id="dark-night"   label="Dark · 11 PM" width={420} height={840}><PhoneStage themeKey="dark" overrideHour={23} /></DCArtboard>
+        <DCArtboard id="dark-afternoon" label="Dark · 3 PM (early-dark)" width={420} height={840}><PhoneStage themeKey="dark" overrideHour={15} /></DCArtboard>
+      </DCSection>
+
+      <DCSection
+        id="settings-light"
+        title="Settings — light theme"
+        subtitle="Bring-your-own keys. Form fields are flat (rounded inputs, not cards) so they don’t compete with the behavior list below — only the toggle rows render as item-cards, the same rule as the task list on Home. Three states: empty (Save disabled), saved (masked values + green confirmation), typing (Save active).">
+
+        <DCArtboard id="settings-light-empty"   label="Light · Empty"              width={420} height={840}><PhoneStage themeKey="light" screen="settings" settingsProps={{ state: 'empty' }} /></DCArtboard>
+        <DCArtboard id="settings-light-saved"   label="Light · Saved"              width={420} height={840}><PhoneStage themeKey="light" screen="settings" settingsProps={{ state: 'saved' }} /></DCArtboard>
+        <DCArtboard id="settings-light-claude"  label="Light · Claude · Opus"      width={420} height={840}><PhoneStage themeKey="light" screen="settings" settingsProps={{ state: 'saved', provider: 'claude', model: 'opus-4' }} /></DCArtboard>
+        <DCArtboard id="settings-light-openai"  label="Light · OpenAI · o4-mini"   width={420} height={840}><PhoneStage themeKey="light" screen="settings" settingsProps={{ state: 'saved', provider: 'openai', model: 'o4-mini' }} /></DCArtboard>
+        <DCArtboard id="settings-light-typing"  label="Light · Typing"             width={420} height={840}><PhoneStage themeKey="light" screen="settings" settingsProps={{ state: 'typing' }} /></DCArtboard>
+        <DCArtboard id="settings-light-bottom"  label="Light · Behavior (scrolled)" width={420} height={840}><PhoneStage themeKey="light" screen="settings" settingsProps={{ state: 'saved', scrollTo: 'bottom' }} /></DCArtboard>
+        <DCArtboard id="settings-light-time"    label="Light · Pick briefing time" width={420} height={840}><PhoneStage themeKey="light" screen="settings" settingsProps={{ state: 'saved', scrollTo: 'bottom', showTimePicker: true }} /></DCArtboard>
+      </DCSection>
+
+      <DCSection
+        id="settings-dark"
+        title="Settings — dark theme"
+        subtitle="Dark mode of the same three states. Deep navy ground, aqua accent on the active provider, primary button, and toggles.">
+
+        <DCArtboard id="settings-dark-empty"    label="Dark · Empty"               width={420} height={840}><PhoneStage themeKey="dark" screen="settings" settingsProps={{ state: 'empty' }} /></DCArtboard>
+        <DCArtboard id="settings-dark-saved"    label="Dark · Saved"               width={420} height={840}><PhoneStage themeKey="dark" screen="settings" settingsProps={{ state: 'saved' }} /></DCArtboard>
+        <DCArtboard id="settings-dark-deepseek" label="Dark · DeepSeek · r1"      width={420} height={840}><PhoneStage themeKey="dark" screen="settings" settingsProps={{ state: 'saved', provider: 'deepseek', model: 'r1' }} /></DCArtboard>
+        <DCArtboard id="settings-dark-typing"   label="Dark · Typing"              width={420} height={840}><PhoneStage themeKey="dark" screen="settings" settingsProps={{ state: 'typing' }} /></DCArtboard>
+        <DCArtboard id="settings-dark-bottom"   label="Dark · Behavior (scrolled)" width={420} height={840}><PhoneStage themeKey="dark" screen="settings" settingsProps={{ state: 'saved', scrollTo: 'bottom' }} /></DCArtboard>
+        <DCArtboard id="settings-dark-time"     label="Dark · Pick briefing time"  width={420} height={840}><PhoneStage themeKey="dark" screen="settings" settingsProps={{ state: 'saved', scrollTo: 'bottom', showTimePicker: true }} /></DCArtboard>
+      </DCSection>
+
+      <DCSection
+        id="saved"
+        title="Saved Posts — swipe + overflow delete"
+        subtitle="Inbox of posts shared into the app. No destructive button on the card itself. Primary path: swipe a card left to reveal a single red Delete panel. Secondary path: ⋯ in the meta row opens a sheet with Send / Copy / Delete. Archive is intentionally absent — Notion is the archive. The unread state is a 2 px left rule, not a corner dot. Spec: DESIGN_SYSTEM.md §3.18–§3.23, §4.4.">
+
+        <DCArtboard id="saved-dark-resting"  label="Dark · resting"         width={420} height={840}><PhoneStage themeKey="dark"  screen="saved" savedProps={{ state: 'resting' }} /></DCArtboard>
+        <DCArtboard id="saved-dark-swiped"   label="Dark · swipe revealed"  width={420} height={840}><PhoneStage themeKey="dark"  screen="saved" savedProps={{ state: 'swiped'  }} /></DCArtboard>
+        <DCArtboard id="saved-dark-sheet"    label="Dark · action sheet"    width={420} height={840}><PhoneStage themeKey="dark"  screen="saved" savedProps={{ state: 'sheet'   }} /></DCArtboard>
+        <DCArtboard id="saved-light-resting" label="Light · resting"        width={420} height={840}><PhoneStage themeKey="light" screen="saved" savedProps={{ state: 'resting' }} /></DCArtboard>
+        <DCArtboard id="saved-light-swiped"  label="Light · swipe revealed" width={420} height={840}><PhoneStage themeKey="light" screen="saved" savedProps={{ state: 'swiped'  }} /></DCArtboard>
+        <DCArtboard id="saved-light-sheet"   label="Light · action sheet"   width={420} height={840}><PhoneStage themeKey="light" screen="saved" savedProps={{ state: 'sheet'   }} /></DCArtboard>
+      </DCSection>
+    </DesignCanvas>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

@@ -67,6 +67,7 @@ import com.luna.morningagent.ui.settings.components.BehaviorValueRow
 import com.luna.morningagent.ui.settings.components.ModelChip
 import com.luna.morningagent.ui.settings.components.ProviderTile
 import com.luna.morningagent.ui.settings.components.ProviderTileData
+import com.luna.morningagent.ui.settings.components.SavedPostCategoriesSection
 import com.luna.morningagent.ui.settings.components.SettingsInput
 import com.luna.morningagent.ui.theme.MorningAgentTheme
 import com.luna.morningagent.ui.theme.MorningType
@@ -100,6 +101,9 @@ fun SettingsScreen(
         onTestNotion           = vm::testNotionConnection,
         onSave                 = vm::save,
         onBack                 = handleBack,
+        onCategoryAdd          = vm::addCategory,
+        onCategoryUpdate       = vm::updateCategory,
+        onCategoryRemove       = vm::removeCategory,
         modifier               = modifier,
     )
 }
@@ -120,6 +124,9 @@ private fun SettingsScreenContent(
     onTestNotion: () -> Unit,
     onSave: () -> Unit,
     onBack: () -> Unit,
+    onCategoryAdd: (name: String, keywords: List<String>) -> Unit,
+    onCategoryUpdate: (oldName: String, newName: String, keywords: List<String>) -> Unit,
+    onCategoryRemove: (name: String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val morning = MaterialTheme.morning
@@ -347,6 +354,20 @@ private fun SettingsScreenContent(
                     )
                 }
             }
+
+            // Saved post categories
+            SectionLabel(
+                text     = stringResource(R.string.settings_section_saved_posts),
+                modifier = Modifier.padding(top = 22.dp),
+            )
+            SavedPostCategoriesSection(
+                categories           = uiState.categories,
+                postCountsByCategory = uiState.postCountsByCategory,
+                onAdd                = onCategoryAdd,
+                onUpdate             = onCategoryUpdate,
+                onRemove             = onCategoryRemove,
+            )
+
         }
     }
 
@@ -651,6 +672,9 @@ private fun SettingsEmptyPreview() {
             onTestNotion           = {},
             onSave                 = {},
             onBack                 = {},
+            onCategoryAdd          = { _, _ -> },
+            onCategoryUpdate       = { _, _, _ -> },
+            onCategoryRemove       = {},
         )
     }
 }
@@ -683,6 +707,9 @@ private fun SettingsSavedPreview() {
             onTestNotion           = {},
             onSave                 = {},
             onBack                 = {},
+            onCategoryAdd          = { _, _ -> },
+            onCategoryUpdate       = { _, _, _ -> },
+            onCategoryRemove       = {},
         )
     }
 }
