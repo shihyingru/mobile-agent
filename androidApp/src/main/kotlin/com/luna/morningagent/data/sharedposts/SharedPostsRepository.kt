@@ -46,7 +46,11 @@ class SharedPostsRepository(
         // Strip the trailing URL when it's clearly appended to the text so the
         // post content reads cleanly. Threads share format: "<body>\n\n<url>".
         // Use the raw URL — that's what's literally present in the source text.
-        val content = stripTrailingUrl(trimmed, rawUrl).ifBlank { trimmed }
+        // When the share was URL-only, prefer the cleaned URL as the content
+        // placeholder so the body-fetcher gate (`content == url`) recognises
+        // the "no real content yet" state regardless of which tracking params
+        // came in on the original text.
+        val content = stripTrailingUrl(trimmed, rawUrl).ifBlank { url ?: trimmed }
         val author  = subject?.trim()?.takeIf { it.isNotBlank() }
             ?: url?.let { authorFromUrl(it) }
 
