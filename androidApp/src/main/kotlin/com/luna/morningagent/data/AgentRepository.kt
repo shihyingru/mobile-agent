@@ -10,8 +10,9 @@ import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
 import kotlinx.serialization.json.Json
 
-// Pulls the morning briefing together: fetch high-priority Notion tasks, ask Gemini
-// for a summary + per-task tips, merge the tips back onto the tasks, return a Briefing.
+// Pulls the morning briefing together: fetch today's Notion tasks (sorted
+// priority desc, overdue included), ask the briefing model for a summary + per-task
+// tips focused on high-priority work, merge the tips back, return a Briefing.
 @OptIn(ExperimentalTime::class)
 class AgentRepository(
     private val notionTaskSource: NotionTaskSource,
@@ -23,7 +24,7 @@ class AgentRepository(
     // Callers (HomeViewModel) translate these to UI states.
     suspend fun runAgent(onAttempt: (Int, Int) -> Unit = { _, _ -> }): Briefing {
         val tasks = try {
-            notionTaskSource.fetchHighPriorityTasks()
+            notionTaskSource.fetchTodayTasks()
         } catch (e: NotionConfigMissingException) {
             throw AgentConfigMissingException(e.message ?: "Notion not configured", e)
         } catch (e: Exception) {

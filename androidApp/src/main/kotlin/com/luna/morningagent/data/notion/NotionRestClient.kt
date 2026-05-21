@@ -21,11 +21,11 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
@@ -48,7 +48,7 @@ class NotionRestClient(
     private val httpClient: HttpClient = defaultClient(),
 ) : NotionTaskSource {
 
-    override suspend fun fetchHighPriorityTasks(): List<Task> {
+    override suspend fun fetchTodayTasks(): List<Task> {
         val token = tokenStore.getNotionToken()
             ?: throw NotionConfigMissingException("Notion integration token not set in Settings")
         val dbId = tokenStore.getNotionDatabaseId()
@@ -66,16 +66,18 @@ class NotionRestClient(
         // (one /pages/{id} request per unique relation target).
         val rows = response.results.map { it.toRow() }
         val areaNamesById = resolveAreaNames(token, rows.flatMap { it.areaIds }.distinct())
-        return rows.map { it.toTask(areaNamesById) }
+        // Client-side priority sort: Notion's `select` properties sort
+        // alphabetically server-side (High → Low → Medium), which isn't
+        // priority order. `sortedByDescending` is stable, so within each
+        // priority bucket the Notion-returned date-desc order is preserved.
+        return rows
+            .map { it.toTask(areaNamesById) }
+            .sortedByDescending { it.priority.weight }
     }
 
     private fun buildQueryBody(today: String): JsonObject = buildJsonObject {
         putJsonObject("filter") {
             putJsonArray("and") {
-                addJsonObject {
-                    put("property", PROP_PRIORITY)
-                    putJsonObject("select") { put("equals", PRIORITY_HIGH) }
-                }
                 addJsonObject {
                     put("property", PROP_STATUS)
                     putJsonObject("status") { put("does_not_equal", STATUS_DONE) }
@@ -114,7 +116,7 @@ class NotionRestClient(
         // any property whose payload has a populated `title` array and read its
         // first plain_text entry.
         page["properties"]?.jsonObject?.values?.firstNotNullOfOrNull { prop ->
-            prop.jsonObject["title"]?.jsonArray
+            (prop.jsonObject["title"] as? JsonArray)
                 ?.firstOrNull()?.jsonObject?.get("plain_text")?.jsonPrimitive?.content
         }
     } catch (_: Exception) {
@@ -150,13 +152,19 @@ class NotionRestClient(
         area             = areaIds.firstNotNullOfOrNull { areaNamesById[it] },
     )
 
+    // Notion sends `{"select": null}` / `{"title": null}` / `{"relation": null}`
+    // for properties that exist on the schema but are unset on a specific row.
+    // The `.jsonObject` / `.jsonArray` extensions throw on JsonNull, so use
+    // `as? JsonObject` / `as? JsonArray` to short-circuit cleanly.
+
     private fun readTitle(prop: JsonElement?): String? =
-        prop?.jsonObject?.get("title")?.jsonArray
+        ((prop as? JsonObject)?.get("title") as? JsonArray)
             ?.firstOrNull()?.jsonObject?.get("plain_text")?.jsonPrimitive?.content
 
     private fun readPriority(prop: JsonElement?): Priority {
-        val name = prop?.jsonObject?.get("select")?.jsonObject
-            ?.get("name")?.jsonPrimitive?.content
+        val select = (prop as? JsonObject)?.get("select") as? JsonObject
+            ?: return Priority.MID
+        val name = select["name"]?.jsonPrimitive?.content
         return when (name?.lowercase()) {
             "high" -> Priority.HIGH
             "low"  -> Priority.LOW
@@ -165,8 +173,8 @@ class NotionRestClient(
     }
 
     private fun readRelationIds(prop: JsonElement?): List<String> =
-        prop?.jsonObject?.get("relation")?.jsonArray
-            ?.mapNotNull { it.jsonObject["id"]?.jsonPrimitive?.content }
+        ((prop as? JsonObject)?.get("relation") as? JsonArray)
+            ?.mapNotNull { (it as? JsonObject)?.get("id")?.jsonPrimitive?.content }
             ?: emptyList()
 
     companion object {
@@ -177,7 +185,6 @@ class NotionRestClient(
         private const val PROP_STATUS    = "Status"
         private const val PROP_DATE      = "Date"
         private const val PROP_AREA      = "Area"
-        private const val PRIORITY_HIGH  = "High"
         private const val STATUS_DONE    = "Done"
 
         private fun defaultClient(): HttpClient = HttpClient(OkHttp) {
