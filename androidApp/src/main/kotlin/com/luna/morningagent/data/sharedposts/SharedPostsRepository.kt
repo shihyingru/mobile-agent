@@ -332,6 +332,15 @@ class SharedPostsRepository(
         }
     }
 
+    /**
+     * Stamp the og:image URL onto a cached post. Local-only for now — the
+     * Notion mirror doesn't carry images yet. Used by the body fetcher right
+     * after `updateContent` so the Saved card has a thumbnail to render.
+     */
+    fun updateImageUrl(localId: String, imageUrl: String) {
+        updateCache(localId) { it.copy(imageUrl = imageUrl) }
+    }
+
     fun remove(localId: String) {
         val current = readCache().filterNot { it.localId == localId }
         writeCache(current)

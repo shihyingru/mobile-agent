@@ -71,18 +71,27 @@ class ShareReceiverActivity : Activity() {
 
             val saved = result?.post ?: return@launch
 
-            // 1. Enrich content. Threads/X/Instagram intents carry only the
-            //    URL — scrape og:description (with a Gemini url_context
-            //    fallback) so the cache (and later Notion) sees the real
-            //    post body, not a bare URL.
+            // 1. Enrich from the URL when there's one. Threads/X/Instagram
+            //    intents carry only the URL — scrape og:description (with a
+            //    Gemini url_context fallback) so the cache (and later Notion)
+            //    sees the real post body, not a bare URL. Also grab og:image
+            //    so the Saved card can render a bookmark-style thumbnail.
             val enriched = run {
-                val needsBody = saved.url != null &&
-                    (saved.content == saved.url || saved.content.length < 80)
-                if (!needsBody) return@run saved
-                val fetched = runCatching { bodyFetcher.fetchBody(saved.url!!) }.getOrNull()
-                if (fetched.isNullOrBlank()) return@run saved
-                repo.updateContent(saved.localId, fetched)
-                saved.copy(content = fetched)
+                if (saved.url == null) return@run saved
+                val needsBody = saved.content == saved.url || saved.content.length < 80
+                val meta = runCatching { bodyFetcher.fetch(saved.url) }.getOrNull()
+                    ?: return@run saved
+
+                var working = saved
+                if (needsBody && !meta.body.isNullOrBlank()) {
+                    repo.updateContent(saved.localId, meta.body)
+                    working = working.copy(content = meta.body)
+                }
+                if (!meta.imageUrl.isNullOrBlank()) {
+                    repo.updateImageUrl(saved.localId, meta.imageUrl)
+                    working = working.copy(imageUrl = meta.imageUrl)
+                }
+                working
             }
 
             // 2. NOW push to Notion. createPage carries the enriched content

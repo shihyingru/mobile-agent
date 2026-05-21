@@ -21,6 +21,7 @@ data class SharedPost(
     val source: String,                   // "Threads" / "Twitter" / "Web" / "Other"
     val author: String? = null,           // From EXTRA_SUBJECT or URL path; null when unknown
     val url: String? = null,              // First URL in the shared text; null for pure-text shares
+    val imageUrl: String? = null,         // og:image / twitter:image from the body fetcher; signed CDN URL — treat as ephemeral
     val categories: List<String> = emptyList(),
     val summary: String? = null,
     val savedAt: Instant,

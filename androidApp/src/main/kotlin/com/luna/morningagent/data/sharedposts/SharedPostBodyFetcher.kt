@@ -28,45 +28,62 @@ import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 
 /**
- * Backfills the real post body when the share intent only carried a URL.
+ * Backfills the real post body (and a thumbnail image URL) when the share
+ * intent only carried a URL.
  *
  * Social apps (Threads, X, Instagram, …) ship just the post URL in
  * `Intent.EXTRA_TEXT` — the body text never crosses the share boundary. We
  * recover it post-save:
  *
- *  1. **Scrape** the URL with a browser-shaped User-Agent and pull the best
- *     `og:description` / `twitter:description` / `description` / `<title>`
- *     meta. Fast (~200 ms), no AI cost. Works for Threads, most blogs.
- *  2. **AI fallback** — when scrape returns nothing useful (length < 40 chars
- *     after decode), call Gemini 2.5 Flash with the `url_context` tool and
- *     ask for the verbatim body. Heavier but handles JS-only pages.
+ *  1. **Scrape** the URL with a browser-shaped User-Agent and pull
+ *     `og:description` (best caption), `og:image` (thumbnail) and the
+ *     usual `twitter:*` / plain `description` / `<title>` fallbacks. Fast
+ *     (~200 ms), no AI cost. Works for Threads, most blogs.
+ *  2. **AI fallback** for the body only — when scrape returns nothing
+ *     useful (truly empty), call Gemini 2.5 Flash with the `url_context`
+ *     tool and ask for the verbatim body. Heavier but handles JS-only
+ *     pages. Image URL only comes from scrape — Gemini can't fetch CDN
+ *     blob URLs without a vision-context detour we're not paying for.
  *
- * Returns null when both paths fail; the caller leaves the original content
- * (URL string) in place.
+ * No length floor: any non-blank scrape result is preferred over the URL.
+ * The AI fallback only fires when scrape is fully empty.
+ *
+ * Returns a [FetchedOgMeta] — both fields nullable; the caller decides
+ * which (if any) to write back to the cache.
  */
 class SharedPostBodyFetcher(
     private val tokenStore: TokenStore,
     private val httpClient: HttpClient = defaultClient(),
 ) {
 
-    suspend fun fetchBody(url: String): String? {
-        Log.i(TAG, "fetchBody url=$url")
+    suspend fun fetch(url: String): FetchedOgMeta {
+        Log.i(TAG, "fetch url=$url")
         val scraped = runCatching { scrape(url) }
             .onFailure { Log.w(TAG, "scrape failed: ${it.message}") }
             .getOrNull()
-        Log.i(TAG, "scrape result len=${scraped?.length ?: 0} preview=${scraped?.take(120)}")
-        if (!scraped.isNullOrBlank() && scraped.length >= SCRAPE_MIN_USEFUL_LEN) return scraped
+            ?: ScrapeResult(body = null, imageUrl = null)
+        Log.i(
+            TAG,
+            "scrape body.len=${scraped.body?.length ?: 0} image=${scraped.imageUrl != null} " +
+                "preview=${scraped.body?.take(120)}",
+        )
+        if (!scraped.body.isNullOrBlank()) {
+            return FetchedOgMeta(body = scraped.body, imageUrl = scraped.imageUrl)
+        }
 
+        // Scrape gave us no caption — try AI for the body. Image URL stays as
+        // whatever scrape returned (often non-null even when og:description is
+        // empty for image-only posts).
         val ai = runCatching { aiExtract(url) }
             .onFailure { Log.w(TAG, "aiExtract failed: ${it.message}") }
             .getOrNull()
         Log.i(TAG, "aiExtract result len=${ai?.length ?: 0} preview=${ai?.take(120)}")
-        return ai ?: scraped
+        return FetchedOgMeta(body = ai, imageUrl = scraped.imageUrl)
     }
 
     // --- Phase 1: scrape ----------------------------------------------------
 
-    private suspend fun scrape(url: String): String? {
+    private suspend fun scrape(url: String): ScrapeResult {
         // Threads, X, Instagram return JS-only shells (no meta tags) to browser
         // UAs but serve real OG meta to known crawlers. Pose as facebookexternalhit
         // so og:description holds the actual post body.
@@ -79,18 +96,30 @@ class SharedPostBodyFetcher(
             }
         }.bodyAsText()
 
-        val candidates = listOfNotNull(
+        val bodyCandidates = listOfNotNull(
             META_OG_DESCRIPTION.find(html)?.groupValues?.getOrNull(1),
             META_TW_DESCRIPTION.find(html)?.groupValues?.getOrNull(1),
             META_DESCRIPTION.find(html)?.groupValues?.getOrNull(1),
             HTML_TITLE.find(html)?.groupValues?.getOrNull(1),
         )
-        return candidates
+        val body = bodyCandidates
             .map { decodeHtmlEntities(it).trim() }
             .filter { it.isNotBlank() }
             .maxByOrNull { it.length }
             ?.take(MAX_BODY_CHARS)
+
+        val imageRaw = listOfNotNull(
+            META_OG_IMAGE.find(html)?.groupValues?.getOrNull(1),
+            META_TW_IMAGE.find(html)?.groupValues?.getOrNull(1),
+        ).firstOrNull()
+        val imageUrl = imageRaw
+            ?.let { decodeHtmlEntities(it).trim() }
+            ?.takeIf { it.startsWith("http") }
+
+        return ScrapeResult(body = body, imageUrl = imageUrl)
     }
+
+    private data class ScrapeResult(val body: String?, val imageUrl: String?)
 
     // --- Phase 2: AI fallback ----------------------------------------------
 
@@ -111,7 +140,7 @@ class SharedPostBodyFetcher(
             ?.jsonObject?.get("text")
             ?.jsonPrimitive?.content
             ?.trim()
-            ?.takeIf { it.isNotBlank() && it.length >= SCRAPE_MIN_USEFUL_LEN }
+            ?.takeIf { it.isNotBlank() }
             ?.take(MAX_BODY_CHARS)
     }
 
@@ -148,7 +177,6 @@ class SharedPostBodyFetcher(
 
     companion object {
         private const val TAG = "BodyFetcher"
-        private const val SCRAPE_MIN_USEFUL_LEN = 40
         private const val MAX_BODY_CHARS        = 4000
         private const val GEMINI_API_BASE       = "https://generativelanguage.googleapis.com/v1beta"
         private const val AI_FALLBACK_MODEL     = "gemini-2.5-flash"
@@ -166,6 +194,16 @@ class SharedPostBodyFetcher(
             """<meta[^>]+name\s*=\s*["']description["'][^>]*?content\s*=\s*["']([^"']*)["']""",
             RegexOption.IGNORE_CASE,
         )
+        // `content` can come BEFORE the property attr — match in either order
+        // (some pages emit `<meta content="…" property="og:image" />`).
+        private val META_OG_IMAGE = Regex(
+            """<meta[^>]+(?:property|name)\s*=\s*["']og:image["'][^>]*?content\s*=\s*["']([^"']*)["']""",
+            RegexOption.IGNORE_CASE,
+        )
+        private val META_TW_IMAGE = Regex(
+            """<meta[^>]+(?:property|name)\s*=\s*["']twitter:image["'][^>]*?content\s*=\s*["']([^"']*)["']""",
+            RegexOption.IGNORE_CASE,
+        )
         private val HTML_TITLE = Regex(
             """<title[^>]*>([^<]*)</title>""",
             RegexOption.IGNORE_CASE,
@@ -178,3 +216,11 @@ class SharedPostBodyFetcher(
         }
     }
 }
+
+/** Result of scraping a shared-post URL for OG/Twitter meta. */
+data class FetchedOgMeta(
+    /** Best caption candidate. Null when neither scrape nor AI recovered anything. */
+    val body: String? = null,
+    /** First absolute http(s) image URL from `og:image` / `twitter:image`. */
+    val imageUrl: String? = null,
+)
