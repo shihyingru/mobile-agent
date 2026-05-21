@@ -11,6 +11,8 @@ import com.luna.morningagent.data.notion.NotionConfigMissingException
 import com.luna.morningagent.data.notion.NotionRestClient
 import com.luna.morningagent.data.notion.NotionTaskSource
 import com.luna.morningagent.data.secure.TokenStore
+import com.luna.morningagent.data.sharedposts.CategoryDefinition
+import com.luna.morningagent.data.sharedposts.SharedPostsRepository
 import com.luna.morningagent.worker.BriefingScheduler
 import com.luna.morningagent.worker.MorningAgentWorker
 import kotlinx.coroutines.delay
@@ -42,12 +44,21 @@ data class SettingsUiState(
     val briefingMinute: Int      = 0,
     val justSaved: Boolean       = false,
     val notionTest: NotionTestResult? = null,
+    val categories: List<CategoryDefinition> = emptyList(),
+    val postCountsByCategory: Map<String, Int> = emptyMap(),
 )
+
+/** Hard limits enforced by both UI and prompt rule — keep them in sync. */
+const val CATEGORY_NAME_MIN_CHARS = 3
+const val CATEGORY_NAME_MAX_CHARS = 15
+/** Category name that can never be removed — categorizer falls back here. */
+const val SEED_CATEGORY_NAME = "Misc"
 
 class SettingsViewModel(application: Application) : AndroidViewModel(application) {
 
     private val store = TokenStore(application)
     private val notionClient: NotionTaskSource = NotionRestClient(store)
+    private val sharedPostsRepo = SharedPostsRepository(store)
 
     var uiState by mutableStateOf(SettingsUiState())
         private set
@@ -68,6 +79,16 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             briefingHour     = store.getDailyBriefingHour(),
             briefingMinute   = store.getDailyBriefingMinute(),
         )
+        refreshCategories()
+    }
+
+    private fun refreshCategories() {
+        val cats   = store.getSharedPostsCategories()
+        val counts = sharedPostsRepo.listAll()
+            .flatMap { it.categories }
+            .groupingBy { it }
+            .eachCount()
+        uiState = uiState.copy(categories = cats, postCountsByCategory = counts)
     }
 
     private fun modelIdFor(provider: ProviderOption): String = when (provider) {
@@ -178,6 +199,29 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                     NotionTestResult.Failure(e.message ?: e::class.simpleName ?: "Unknown error")
                 },
             )
+        }
+    }
+
+    // --- Saved post categories ----------------------------------------------
+
+    fun addCategory(name: String, keywords: List<String>) {
+        viewModelScope.launch {
+            sharedPostsRepo.addCategory(name, keywords)
+            refreshCategories()
+        }
+    }
+
+    fun updateCategory(oldName: String, newName: String, keywords: List<String>) {
+        viewModelScope.launch {
+            sharedPostsRepo.updateCategory(oldName, newName, keywords)
+            refreshCategories()
+        }
+    }
+
+    fun removeCategory(name: String) {
+        viewModelScope.launch {
+            sharedPostsRepo.removeCategory(name)
+            refreshCategories()
         }
     }
 

@@ -106,10 +106,13 @@ class SharedPostsRepository(
             .distinct()
         if (cleaned.isEmpty() && summary.isNullOrBlank()) return
 
-        val currentTaxonomy = tokenStore.getSharedPostsTaxonomy()
-        val newCategoryNames = cleaned.filter { it !in currentTaxonomy }
+        val currentCategories = tokenStore.getSharedPostsCategories()
+        val existingNames     = currentCategories.map { it.name }.toSet()
+        val newCategoryNames  = cleaned.filter { it !in existingNames }
         if (newCategoryNames.isNotEmpty()) {
-            tokenStore.saveSharedPostsTaxonomy(currentTaxonomy + newCategoryNames)
+            tokenStore.saveSharedPostsCategories(
+                currentCategories + newCategoryNames.map { CategoryDefinition(name = it) },
+            )
         }
 
         var notionIdToPatch: String? = null
@@ -199,15 +202,113 @@ class SharedPostsRepository(
             // 4. Sort newest-first so the UI doesn't have to.
             writeCache(merged.sortedByDescending { it.savedAt })
 
-            // 5. Rebuild taxonomy from the merged posts so deletions in Notion
-            //    drop the corresponding chip locally. Always keep the "Misc"
-            //    seed (the categorizer's empty-list fallback expects it).
-            val rebuilt = (listOf(SEED_CATEGORY) + merged.flatMap { it.categories })
+            // 5. Rebuild category list from the merged posts so deletions in
+            //    Notion drop the corresponding chip locally. Preserve any
+            //    keyword hints Luna has attached to retained categories; the
+            //    "Misc" seed is always kept.
+            val existingByName = tokenStore.getSharedPostsCategories().associateBy { it.name }
+            val rebuiltNames   = (listOf(SEED_CATEGORY) + merged.flatMap { it.categories })
                 .filter { it.isNotBlank() }
                 .distinct()
-            tokenStore.saveSharedPostsTaxonomy(rebuilt)
+            val rebuilt = rebuiltNames.map { name ->
+                existingByName[name] ?: CategoryDefinition(name = name)
+            }
+            tokenStore.saveSharedPostsCategories(rebuilt)
         }
     }
+
+    // --- Category CRUD (Settings) -------------------------------------------
+
+    /**
+     * Append a new user-defined category. No-op when [name] is blank or already
+     * exists (case-sensitive name match — see `Settings` for client-side input
+     * normalisation). [keywords] are stored verbatim minus blanks and dupes.
+     */
+    fun addCategory(name: String, keywords: List<String> = emptyList()) {
+        val trimmedName = name.trim()
+        if (trimmedName.isBlank()) return
+        val current = tokenStore.getSharedPostsCategories()
+        if (current.any { it.name == trimmedName }) return
+        tokenStore.saveSharedPostsCategories(
+            current + CategoryDefinition(name = trimmedName, keywords = cleanKeywords(keywords)),
+        )
+    }
+
+    /**
+     * Update an existing category. If [newName] differs from [oldName] and the
+     * category is in use on cached posts (and mirrored to Notion), the rename
+     * is propagated to those entries' `categories` lists and patched to Notion.
+     * No-op when [oldName] doesn't exist or [newName] is blank.
+     */
+    suspend fun updateCategory(
+        oldName: String,
+        newName: String,
+        keywords: List<String>,
+    ) {
+        val cleanedNewName = newName.trim()
+        if (cleanedNewName.isBlank()) return
+        val current = tokenStore.getSharedPostsCategories()
+        val idx     = current.indexOfFirst { it.name == oldName }
+        if (idx < 0) return
+        // Collision-on-rename: drop the source and merge keywords into the
+        // existing target so we don't end up with two entries sharing a name.
+        val targetIdx = current.indexOfFirst { it.name == cleanedNewName }
+        val updated   = current.toMutableList()
+        val mergedKeywords = cleanKeywords(keywords)
+        if (cleanedNewName != oldName && targetIdx >= 0) {
+            val combined = (current[targetIdx].keywords + mergedKeywords).distinct()
+            updated[targetIdx] = current[targetIdx].copy(keywords = combined)
+            updated.removeAt(idx)
+        } else {
+            updated[idx] = CategoryDefinition(name = cleanedNewName, keywords = mergedKeywords)
+        }
+        tokenStore.saveSharedPostsCategories(updated)
+
+        if (cleanedNewName != oldName) propagateRenameToPosts(oldName, cleanedNewName)
+    }
+
+    /**
+     * Remove a user-defined category and strip it from every cached post that
+     * used it (with Notion patch when synced). "Misc" can't be removed —
+     * the categorizer falls back to it when the model returns nothing.
+     */
+    suspend fun removeCategory(name: String) {
+        if (name == SEED_CATEGORY) return
+        val current = tokenStore.getSharedPostsCategories()
+        val remaining = current.filterNot { it.name == name }
+        if (remaining.size == current.size) return
+        tokenStore.saveSharedPostsCategories(remaining)
+        propagateRemovalToPosts(name)
+    }
+
+    private suspend fun propagateRenameToPosts(oldName: String, newName: String) {
+        val affected = mutableListOf<SharedPost>()
+        readCache().forEach { post ->
+            if (oldName !in post.categories) return@forEach
+            val swapped = post.categories.map { if (it == oldName) newName else it }.distinct()
+            updateCache(post.localId) { it.copy(categories = swapped) }
+            if (post.notionId != null) affected += post.copy(categories = swapped)
+        }
+        affected.forEach { p ->
+            runCatching { notionClient.updatePageCategoriesAndSummary(p.notionId!!, p.categories, p.summary) }
+        }
+    }
+
+    private suspend fun propagateRemovalToPosts(name: String) {
+        val affected = mutableListOf<SharedPost>()
+        readCache().forEach { post ->
+            if (name !in post.categories) return@forEach
+            val stripped = post.categories.filterNot { it == name }
+            updateCache(post.localId) { it.copy(categories = stripped) }
+            if (post.notionId != null) affected += post.copy(categories = stripped)
+        }
+        affected.forEach { p ->
+            runCatching { notionClient.updatePageCategoriesAndSummary(p.notionId!!, p.categories, p.summary) }
+        }
+    }
+
+    private fun cleanKeywords(keywords: List<String>): List<String> =
+        keywords.map { it.trim() }.filter { it.isNotBlank() }.distinct()
 
     /** Replace the cached post entirely — used by the categorizer (commit 2). */
     fun update(localId: String, transform: (SharedPost) -> SharedPost) {

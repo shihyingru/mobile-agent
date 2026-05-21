@@ -95,8 +95,8 @@ class ShareReceiverActivity : Activity() {
             // 3. Categorize. applyCategorization writes categories + summary
             //    into the cache and patches the (now-existing) Notion page.
             val categories = categorizer.categorize(
-                post              = enriched,
-                existingTaxonomy  = tokenStore.getSharedPostsTaxonomy(),
+                post               = enriched,
+                existingCategories = tokenStore.getSharedPostsCategories(),
             )
             if (categories != null) {
                 repo.applyCategorization(

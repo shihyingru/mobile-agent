@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import com.luna.morningagent.data.sharedposts.CategoryDefinition
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -153,11 +154,25 @@ class TokenStore(context: Context) {
     fun saveSharedPostsDbId(id: String) = writeString(KEY_SHARED_POSTS_DB_ID, id)
     fun getSharedPostsDbId(): String? = readString(KEY_SHARED_POSTS_DB_ID)
 
-    fun saveSharedPostsTaxonomy(categories: List<String>) =
+    fun saveSharedPostsCategories(categories: List<CategoryDefinition>) =
         writeString(KEY_SHARED_POSTS_TAXONOMY, taxonomyJson.encodeToString(categories))
-    fun getSharedPostsTaxonomy(): List<String> {
-        val raw = readString(KEY_SHARED_POSTS_TAXONOMY) ?: return DEFAULT_TAXONOMY
-        return runCatching { taxonomyJson.decodeFromString<List<String>>(raw) }.getOrDefault(DEFAULT_TAXONOMY)
+
+    /**
+     * Returns the user's saved-posts categories. Migrates a legacy
+     * `List<String>` payload (from before keywords were introduced) to
+     * `List<CategoryDefinition>` with empty keyword lists on first read.
+     */
+    fun getSharedPostsCategories(): List<CategoryDefinition> {
+        val raw = readString(KEY_SHARED_POSTS_TAXONOMY) ?: return DEFAULT_CATEGORIES
+        // Try the new shape first.
+        runCatching {
+            taxonomyJson.decodeFromString<List<CategoryDefinition>>(raw)
+        }.getOrNull()?.let { return it }
+        // Fall back to the legacy List<String> shape and lift to CategoryDefinition.
+        return runCatching {
+            taxonomyJson.decodeFromString<List<String>>(raw)
+                .map { CategoryDefinition(name = it) }
+        }.getOrDefault(DEFAULT_CATEGORIES)
     }
 
     fun saveSharedPostsCacheJson(json: String) = writeString(KEY_SHARED_POSTS_CACHE, json)
@@ -185,7 +200,7 @@ class TokenStore(context: Context) {
         private const val DEFAULT_PROVIDER     = "gemini"
         private const val DEFAULT_HOUR         = 9
         private const val DEFAULT_MINUTE       = 0
-        private val DEFAULT_TAXONOMY           = listOf("Misc")
+        private val DEFAULT_CATEGORIES         = listOf(CategoryDefinition(name = "Misc"))
 
         // Tink-sealed (sensitive or text). Plain in DataStore (bool / int — not secrets).
         private val STRING_KEYS = listOf(

@@ -34,11 +34,11 @@ class SharedPostCategorizer(
 
     suspend fun categorize(
         post: SharedPost,
-        existingTaxonomy: List<String>,
+        existingCategories: List<CategoryDefinition>,
     ): CategorizationResult? {
         val executor = buildExecutor() ?: return null
         val model    = preferredModel()
-        val prompt   = buildCategorizationPrompt(post, existingTaxonomy)
+        val prompt   = buildCategorizationPrompt(post, existingCategories)
 
         return runCatching {
             val responses = executor.execute(prompt = prompt, model = model)
@@ -100,20 +100,32 @@ private val CATEGORIZER_JSON = Json {
 
 internal fun buildCategorizationPrompt(
     post: SharedPost,
-    existingTaxonomy: List<String>,
+    existingCategories: List<CategoryDefinition>,
 ): Prompt = prompt(
     id     = "shared-post-categorize",
     params = LLMParams(temperature = CATEGORIZER_TEMPERATURE),
 ) {
     system(CATEGORIZER_SYSTEM_PROMPT)
-    user(buildCategorizerUserMessage(post, existingTaxonomy))
+    user(buildCategorizerUserMessage(post, existingCategories))
 }
 
 internal fun buildCategorizerUserMessage(
     post: SharedPost,
-    existingTaxonomy: List<String>,
+    existingCategories: List<CategoryDefinition>,
 ): String = buildString {
-    appendLine("Existing categories: ${existingTaxonomy.joinToString(prefix = "[", postfix = "]")}")
+    appendLine("Existing categories:")
+    if (existingCategories.isEmpty()) {
+        appendLine("  (none yet — invent one)")
+    } else {
+        existingCategories.forEach { cat ->
+            val hints = cat.keywords.filter { it.isNotBlank() }
+            if (hints.isEmpty()) {
+                appendLine("  - \"${cat.name}\"")
+            } else {
+                appendLine("  - \"${cat.name}\"  (use when post mentions: ${hints.joinToString(", ")})")
+            }
+        }
+    }
     appendLine()
     appendLine("Post (from ${post.source}${post.author?.let { " by $it" } ?: ""}):")
     appendLine("\"\"\"")
@@ -122,9 +134,13 @@ internal fun buildCategorizerUserMessage(
     post.url?.let { appendLine("URL: $it") }
     appendLine()
     appendLine("Task:")
-    appendLine("1. Pick 1–3 categories. Prefer existing ones. Only suggest new categories")
-    appendLine("   if nothing in the list fits well — keep new names short (1–2 words).")
-    appendLine("2. Write a 1-sentence summary of why this post mattered enough to save.")
+    appendLine("1. Pick 1–3 categories. Prefer existing ones; match against the `use when`")
+    appendLine("   hints as fuzzy guidance — synonyms, related concepts, and posts in other")
+    appendLine("   languages that mean the same thing all count as matches.")
+    appendLine("2. Only invent a NEW category when nothing existing fits well. New names")
+    appendLine("   must be 3–15 characters total (letters / digits / spaces only, no more")
+    appendLine("   than 2 words). Make them concrete and easy to find later.")
+    appendLine("3. Write a 1-sentence summary of why this post mattered enough to save.")
     appendLine()
     appendLine("Return ONLY a JSON object, no markdown fences, matching this shape:")
     appendLine("""{"categories": ["<name>", ...], "summary": "<one sentence>"}""")

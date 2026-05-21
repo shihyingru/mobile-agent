@@ -79,12 +79,12 @@ class SavedPostsViewModel(application: Application) : AndroidViewModel(applicati
         if (setupState is SetupState.Error) setupState = SetupState.Idle
     }
 
-    /** Categories sourced from the live taxonomy, augmented with anything that
-     *  shows up on a cached post (defensive — the agent might have added a
+    /** Category names sourced from the live taxonomy, augmented with anything
+     *  that shows up on a cached post (defensive — the agent might have added a
      *  category that didn't make it back to the taxonomy in some failure mode). */
     val allCategories: List<String>
         get() {
-            val fromTaxonomy = tokenStore.getSharedPostsTaxonomy()
+            val fromTaxonomy = tokenStore.getSharedPostsCategories().map { it.name }
             val fromPosts    = posts.flatMap { it.categories }
             return (fromTaxonomy + fromPosts).distinct()
         }

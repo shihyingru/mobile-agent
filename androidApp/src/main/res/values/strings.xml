@@ -130,4 +130,22 @@
     <string name="settings_behavior_auto_run_sub">Run the agent as soon as you open the app.</string>
     <string name="settings_behavior_daily_briefing_sub">Push the briefing when it\'s ready.</string>
     <string name="settings_behavior_briefing_time_sub">Wakes the agent and delivers the briefing.</string>
+
+    <!-- Saved post categories (Settings → category management) -->
+    <string name="settings_section_saved_posts">SAVED POST CATEGORIES</string>
+    <string name="settings_saved_posts_count">Categories (%1$d)</string>
+    <string name="settings_saved_posts_no_keywords">no keywords yet</string>
+    <string name="settings_saved_posts_add_category">+ Add category</string>
+    <string name="settings_saved_posts_sheet_title_edit">Edit category</string>
+    <string name="settings_saved_posts_sheet_title_add">Add category</string>
+    <string name="settings_saved_posts_field_name">Name</string>
+    <string name="settings_saved_posts_field_keywords">Keywords</string>
+    <string name="settings_saved_posts_field_keywords_sub">Optional. Words that should match this category — synonyms and related concepts count.</string>
+    <string name="settings_saved_posts_keyword_placeholder">add keyword</string>
+    <string name="settings_saved_posts_save">Save</string>
+    <string name="settings_saved_posts_delete">Delete category</string>
+    <string name="settings_saved_posts_name_counter">%1$d / %2$d chars</string>
+    <string name="settings_saved_posts_name_too_short">Name needs %1$d–%2$d characters</string>
+    <string name="settings_saved_posts_seed_lock">Misc can\'t be deleted — it\'s the categorizer\'s fallback.</string>
+    <string name="cd_remove_keyword">Remove keyword</string>
 </resources>
