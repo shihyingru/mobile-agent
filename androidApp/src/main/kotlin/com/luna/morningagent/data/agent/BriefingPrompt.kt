@@ -3,6 +3,7 @@ package com.luna.morningagent.data.agent
 import ai.koog.prompt.dsl.Prompt
 import ai.koog.prompt.dsl.prompt
 import ai.koog.prompt.params.LLMParams
+import com.luna.morningagent.data.model.Priority
 import com.luna.morningagent.data.model.Task
 import kotlinx.coroutines.delay
 import kotlinx.serialization.Serializable
@@ -45,15 +46,31 @@ internal fun buildBriefingPrompt(tasks: List<Task>): Prompt = prompt(
 }
 
 internal fun buildBriefingUserMessage(tasks: List<Task>): String = buildString {
-    appendLine("Today's high-priority tasks (overdue or due today, sorted recent-first):")
+    appendLine("Today's tasks (overdue or due today, grouped by priority):")
     appendLine()
-    tasks.forEach { t ->
-        append("- id=").append(t.id)
-        append(" | title=").append(t.title)
-        if (t.estimatedMinutes > 0) append(" | est=${t.estimatedMinutes}m")
-        t.area?.takeIf { it.isNotBlank() }?.let { append(" | area=").append(it) }
+    val byPriority = tasks.groupBy { it.priority }
+    listOf(Priority.HIGH, Priority.MID, Priority.LOW).forEach { p ->
+        val bucket = byPriority[p].orEmpty()
+        if (bucket.isEmpty()) return@forEach
+        appendLine("${p.name} priority:")
+        bucket.forEach { t ->
+            append("- id=").append(t.id)
+            append(" | title=").append(t.title)
+            if (t.estimatedMinutes > 0) append(" | est=${t.estimatedMinutes}m")
+            t.area?.takeIf { it.isNotBlank() }?.let { append(" | area=").append(it) }
+            appendLine()
+        }
         appendLine()
     }
+    val highCount = byPriority[Priority.HIGH]?.size ?: 0
+    val otherCount = tasks.size - highCount
+    appendLine("Task:")
+    appendLine("1. Write one short paragraph as the summary. Focus on the HIGH-priority")
+    appendLine("   items only (there are $highCount of them). If $otherCount lower-priority")
+    appendLine("   items also exist, acknowledge them in one phrase (\"plus N lower-priority")
+    appendLine("   items in the queue\") without elaborating on any individual one.")
+    appendLine("2. For every task above — high, mid, AND low — write a one-sentence concrete")
+    appendLine("   tip grounded in the title. Tips are per-card UI; every id needs one.")
     appendLine()
     appendLine("Return ONLY a JSON object, no markdown fences, matching this shape:")
     appendLine("""{"summary": "<one short paragraph>", "tips": {"<task id>": "<one-sentence tip>"}}""")

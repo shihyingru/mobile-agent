@@ -1,5 +1,6 @@
 package com.luna.morningagent.ui.home
 
+import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -38,7 +39,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.core.net.toUri
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -92,6 +95,7 @@ private fun HomeScreenContent(
     modifier: Modifier = Modifier,
 ) {
     val morning = MaterialTheme.morning
+    val context = LocalContext.current
     val isLoading = uiState is HomeUiState.Loading
     val briefing  = (uiState as? HomeUiState.Success)?.briefing
     val tasks     = briefing?.tasks.orEmpty()
@@ -181,7 +185,16 @@ private fun HomeScreenContent(
             item { TodaySectionLabel(count = tasks.size) }
 
             items(tasks, key = { it.id }) { task ->
-                TaskCard(task = task)
+                TaskCard(
+                    task    = task,
+                    onClick = {
+                        task.notionUrl?.takeIf { it.isNotBlank() }?.let { url ->
+                            runCatching {
+                                context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
+                            }
+                        }
+                    },
+                )
             }
 
             if (briefing == null && uiState !is HomeUiState.Error) {

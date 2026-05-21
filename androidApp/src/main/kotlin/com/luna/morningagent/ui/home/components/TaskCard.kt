@@ -48,8 +48,11 @@ import com.luna.morningagent.ui.theme.morning
  *   - top row: PriorityChip · spacer · estimate (mono) · separator dot · SourceLogo(16dp)
  *   - title    (Newsreader 18sp/500)
  *   - tip      (Newsreader italic 14sp, textSecondary)
- *   - hairline cardEdge divider
- *   - footer:  "Open task" (sans, accent) · chevron (accent)
+ *   - hairline cardEdge divider     ← only when task.notionUrl != null
+ *   - footer:  "Open task" (sans, accent) · chevron (accent)   ← ditto
+ *
+ * Tap fires [onClick] only when the task has a Notion URL — manual-entry
+ * tasks with no source link are passive cards (no affordance, no footer).
  */
 @Composable
 fun TaskCard(
@@ -57,6 +60,7 @@ fun TaskCard(
     onClick: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
+    val hasLink = !task.notionUrl.isNullOrBlank()
     val morning = MaterialTheme.morning
     var pressed by remember { mutableStateOf(false) }
     val scale by animateFloatAsState(
@@ -81,7 +85,8 @@ fun TaskCard(
             .clip(RoundedCornerShape(18.dp))
             .background(morning.surface)
             .border(width = 1.dp, color = morning.cardEdge, shape = RoundedCornerShape(18.dp))
-            .pointerInput(Unit) {
+            .pointerInput(hasLink) {
+                if (!hasLink) return@pointerInput
                 detectTapGestures(
                     onPress = {
                         pressed = true
@@ -131,34 +136,36 @@ fun TaskCard(
             color = morning.textSecondary,
         )
 
-        Spacer(modifier = Modifier.height(12.dp))
+        if (hasLink) {
+            Spacer(modifier = Modifier.height(12.dp))
 
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(1.dp)
-                .background(morning.cardEdge),
-        )
-
-        Spacer(modifier = Modifier.height(10.dp))
-
-        Row(
-            modifier              = Modifier.fillMaxWidth(),
-            verticalAlignment     = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Text(
-                text  = stringResource(R.string.action_open_task),
-                style = MorningType.ButtonLabel,
-                color = morning.accent,
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(morning.cardEdge),
             )
-            Spacer(modifier = Modifier.weight(1f))
-            Icon(
-                imageVector        = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
-                contentDescription = stringResource(R.string.cd_notion_link),
-                tint               = morning.accent.copy(alpha = 0.7f),
-                modifier           = Modifier.size(14.dp),
-            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Row(
+                modifier              = Modifier.fillMaxWidth(),
+                verticalAlignment     = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text(
+                    text  = stringResource(R.string.action_open_task),
+                    style = MorningType.ButtonLabel,
+                    color = morning.accent,
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                Icon(
+                    imageVector        = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                    contentDescription = stringResource(R.string.cd_notion_link),
+                    tint               = morning.accent.copy(alpha = 0.7f),
+                    modifier           = Modifier.size(14.dp),
+                )
+            }
         }
     }
 }

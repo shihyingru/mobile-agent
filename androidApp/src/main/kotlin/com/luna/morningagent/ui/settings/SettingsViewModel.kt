@@ -191,7 +191,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             uiState = uiState.copy(
                 notionTest = try {
-                    val tasks = notionClient.fetchHighPriorityTasks()
+                    val tasks = notionClient.fetchTodayTasks()
                     NotionTestResult.Success(tasks.size)
                 } catch (e: NotionConfigMissingException) {
                     NotionTestResult.Failure(e.message ?: "Missing config")
