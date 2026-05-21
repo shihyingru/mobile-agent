@@ -89,6 +89,9 @@ dependencies {
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.tink.android)
 
+    // Compose image loading (saved-posts card thumbnails).
+    implementation(libs.coil.compose)
+
     // Phase 2 step 2 — Notion REST client (interim until hosted MCP grows token support)
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.okhttp)

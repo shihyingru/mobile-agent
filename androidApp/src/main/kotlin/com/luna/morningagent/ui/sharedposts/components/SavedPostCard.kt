@@ -45,10 +45,12 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import com.luna.morningagent.R
 import com.luna.morningagent.data.sharedposts.SharedPost
 import com.luna.morningagent.ui.theme.InterFamily
@@ -227,19 +229,30 @@ fun SavedPostCard(
                 ) {
                     PostMetaRow(post = post, onOverflow = onOverflow)
                     Spacer(modifier = Modifier.height(9.dp))
-                    Text(
-                        text     = post.content,
-                        color    = morning.textPrimary,
-                        style    = androidx.compose.ui.text.TextStyle(
-                            fontFamily    = SerifReadFamily,
-                            fontWeight    = FontWeight.Normal,
-                            fontSize      = 15.5.sp,
-                            lineHeight    = (15.5f * 1.45f).sp,
-                            letterSpacing = (-0.05).sp,
-                        ),
-                        maxLines = bodyMaxLines,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+
+                    val hasImage = !post.imageUrl.isNullOrBlank()
+                    // Body sits next to a thumbnail when we have one; clamped a
+                    // line shorter so the card height stays balanced. Without an
+                    // image, text uses the full width with the original clamp.
+                    if (hasImage) {
+                        Row(
+                            modifier              = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment     = Alignment.Top,
+                        ) {
+                            BodyOrLinkPlaceholder(
+                                post     = post,
+                                maxLines = (bodyMaxLines - 1).coerceAtLeast(2),
+                                modifier = Modifier.weight(1f),
+                            )
+                            BookmarkThumbnail(imageUrl = post.imageUrl!!)
+                        }
+                    } else {
+                        BodyOrLinkPlaceholder(
+                            post     = post,
+                            maxLines = bodyMaxLines,
+                        )
+                    }
                 }
             }
         }
@@ -331,6 +344,72 @@ private fun CategoryGlyph(post: SharedPost) {
                 fontSize      = 8.5.sp,
                 letterSpacing = (-0.3).sp,
             ),
+        )
+    }
+}
+
+/**
+ * Body slot. When the content is just the post URL (Threads login-walled
+ * posts, or older cards saved before the fetcher could enrich them) — we
+ * render a quiet italic "Tap to open in <Source>" placeholder instead of
+ * pasting the URL string into the body. Keeps the card looking intentional
+ * rather than broken when og:description recovery wasn't possible.
+ */
+@Composable
+private fun BodyOrLinkPlaceholder(
+    post: SharedPost,
+    maxLines: Int,
+    modifier: Modifier = Modifier,
+) {
+    val morning = MaterialTheme.morning
+    val isUrlOnly = post.content.startsWith("http") && post.content.none { it.isWhitespace() }
+    if (isUrlOnly) {
+        Text(
+            text     = "Tap to open in ${post.source}",
+            color    = morning.textMuted,
+            style    = MorningType.BodyReadItalic.copy(fontSize = 14.sp),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = modifier,
+        )
+    } else {
+        Text(
+            text     = post.content,
+            color    = morning.textPrimary,
+            style    = androidx.compose.ui.text.TextStyle(
+                fontFamily    = SerifReadFamily,
+                fontWeight    = FontWeight.Normal,
+                fontSize      = 15.5.sp,
+                lineHeight    = (15.5f * 1.45f).sp,
+                letterSpacing = (-0.05).sp,
+            ),
+            maxLines = maxLines,
+            overflow = TextOverflow.Ellipsis,
+            modifier = modifier,
+        )
+    }
+}
+
+/**
+ * 88dp square thumbnail rendered from the post's og:image URL. Loading uses
+ * Coil; CDN URLs from Instagram/Threads are signed with an `oe=<expiry>` —
+ * once expired (typical TTL: a couple of weeks) we'd 403, so the error slot
+ * just paints a muted surface and the card degrades to text-only-look.
+ */
+@Composable
+private fun BookmarkThumbnail(imageUrl: String) {
+    val morning = MaterialTheme.morning
+    Box(
+        modifier = Modifier
+            .size(88.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(morning.surfaceRaised),
+    ) {
+        AsyncImage(
+            model              = imageUrl,
+            contentDescription = null,
+            contentScale       = ContentScale.Crop,
+            modifier           = Modifier.size(88.dp),
         )
     }
 }
