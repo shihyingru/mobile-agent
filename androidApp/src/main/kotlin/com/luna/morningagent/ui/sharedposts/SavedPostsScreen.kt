@@ -32,17 +32,24 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -73,6 +80,7 @@ import com.luna.morningagent.ui.theme.MorningType
 import com.luna.morningagent.ui.theme.morning
 import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SavedPostsScreen(
     onBack: () -> Unit,
@@ -85,10 +93,23 @@ fun SavedPostsScreen(
         vm.refreshFromNotion()
     }
 
+    // ON_RESUME re-reads the local cache so background shares made via
+    // ShareReceiverActivity (which writes to the same store but doesn't touch
+    // this VM) become visible the moment Luna swipes back into the app.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) vm.refresh()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
     val morning = MaterialTheme.morning
     val context = LocalContext.current
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
+    val pullState = rememberPullToRefreshState()
 
     val statusBars = WindowInsets.statusBars.asPaddingValues()
     val navBars    = WindowInsets.navigationBars.asPaddingValues()
@@ -102,6 +123,12 @@ fun SavedPostsScreen(
             .background(morning.background)
             .imePadding(),
     ) {
+        PullToRefreshBox(
+            isRefreshing = vm.isRefreshing,
+            onRefresh    = { vm.refreshFromNotion() },
+            state        = pullState,
+            modifier     = Modifier.fillMaxSize(),
+        ) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(
@@ -168,6 +195,7 @@ fun SavedPostsScreen(
                 }
             }
         }
+        }   // PullToRefreshBox
     }
 
     sheetPost?.let { target ->

@@ -51,6 +51,10 @@ class SavedPostsViewModel(application: Application) : AndroidViewModel(applicati
     var setupState: SetupState by mutableStateOf(SetupState.Idle)
         private set
 
+    /** True while [refreshFromNotion] is in flight — pull-to-refresh binds to this. */
+    var isRefreshing: Boolean by mutableStateOf(false)
+        private set
+
     init {
         refresh()
     }
@@ -66,9 +70,12 @@ class SavedPostsViewModel(application: Application) : AndroidViewModel(applicati
      * and re-reads. Silent on network failure — cached state stands.
      */
     fun refreshFromNotion() {
+        if (isRefreshing) return
+        isRefreshing = true
         viewModelScope.launch {
             runCatching { repo.refreshFromNotion() }
             refresh()
+            isRefreshing = false
         }
     }
 
