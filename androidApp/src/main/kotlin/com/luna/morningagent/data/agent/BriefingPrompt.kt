@@ -4,7 +4,10 @@ import ai.koog.prompt.dsl.Prompt
 import ai.koog.prompt.dsl.prompt
 import ai.koog.prompt.params.LLMParams
 import com.luna.morningagent.data.model.Priority
+import com.luna.morningagent.data.model.ProposedAction
 import com.luna.morningagent.data.model.Task
+import java.time.LocalDate
+import java.time.ZoneId
 import kotlinx.coroutines.delay
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -35,7 +38,44 @@ internal val BRIEFING_JSON = Json {
 internal data class BriefingPayload(
     val summary: String = "",
     val tips: Map<String, String> = emptyMap(),
+    val proposedActions: List<ProposedActionPayload> = emptyList(),
 )
+
+// Permissive wire shape from the LLM JSON. All fields optional so one malformed
+// action doesn't fail the whole payload — toProposedActionOrNull drops invalid
+// rows silently. Dispatch keyed on `type`; case-insensitive priority match.
+@Serializable
+internal data class ProposedActionPayload(
+    val type: String = "",
+    val taskId: String = "",
+    val reason: String = "",
+    val newDate: String? = null,
+    val newPriority: String? = null,
+)
+
+internal fun List<ProposedActionPayload>.toProposedActions(): List<ProposedAction> =
+    mapNotNull { it.toProposedActionOrNull() }
+
+private fun ProposedActionPayload.toProposedActionOrNull(): ProposedAction? {
+    if (taskId.isBlank()) return null
+    return when (type) {
+        "mark_done" -> ProposedAction.MarkDone(taskId = taskId, reason = reason)
+        "reschedule" -> {
+            val date = newDate?.takeIf { it.isNotBlank() } ?: return null
+            ProposedAction.Reschedule(taskId = taskId, reason = reason, newDate = date)
+        }
+        "change_priority" -> {
+            val priority = when (newPriority?.lowercase()) {
+                "high"          -> Priority.HIGH
+                "medium", "mid" -> Priority.MID
+                "low"           -> Priority.LOW
+                else            -> return null
+            }
+            ProposedAction.ChangePriority(taskId = taskId, reason = reason, newPriority = priority)
+        }
+        else -> null
+    }
+}
 
 internal fun buildBriefingPrompt(tasks: List<Task>): Prompt = prompt(
     id     = "morning-briefing",
@@ -46,7 +86,8 @@ internal fun buildBriefingPrompt(tasks: List<Task>): Prompt = prompt(
 }
 
 internal fun buildBriefingUserMessage(tasks: List<Task>): String = buildString {
-    appendLine("Today's tasks (overdue or due today, grouped by priority):")
+    val today = LocalDate.now(ZoneId.systemDefault())
+    appendLine("Today is $today. Today's tasks (overdue or due today, grouped by priority):")
     appendLine()
     val byPriority = tasks.groupBy { it.priority }
     listOf(Priority.HIGH, Priority.MID, Priority.LOW).forEach { p ->
@@ -71,10 +112,20 @@ internal fun buildBriefingUserMessage(tasks: List<Task>): String = buildString {
     appendLine("   items in the queue\") without elaborating on any individual one.")
     appendLine("2. For every task above — high, mid, AND low — write a one-sentence concrete")
     appendLine("   tip grounded in the title. Tips are per-card UI; every id needs one.")
+    appendLine("3. Optionally propose at most 2 reversible actions you would take on these")
+    appendLine("   tasks today. Each action has:")
+    appendLine("     - \"type\": one of \"mark_done\" | \"reschedule\" | \"change_priority\"")
+    appendLine("     - \"taskId\": MUST match an id from the list above")
+    appendLine("     - \"reason\": one short sentence")
+    appendLine("     - type-specific fields:")
+    appendLine("         mark_done       — no extra fields")
+    appendLine("         reschedule      — \"newDate\" as ISO yyyy-mm-dd, MUST be on or after today")
+    appendLine("         change_priority — \"newPriority\" as \"High\" | \"Medium\" | \"Low\"")
+    appendLine("   Omit the \"proposedActions\" field entirely if nothing is worth proposing.")
     appendLine()
     appendLine("Return ONLY a JSON object, no markdown fences, matching this shape:")
-    appendLine("""{"summary": "<one short paragraph>", "tips": {"<task id>": "<one-sentence tip>"}}""")
-    appendLine("Every task id above must appear as a key in \"tips\".")
+    appendLine("""{"summary": "...", "tips": {"<id>": "..."}, "proposedActions": [{"type": "mark_done", "taskId": "<id>", "reason": "..."}]}""")
+    appendLine("Every task id above must appear as a key in \"tips\". \"proposedActions\" may be absent or have at most 2 entries.")
 }
 
 internal fun parseBriefingResponse(raw: String): BriefingPayload {

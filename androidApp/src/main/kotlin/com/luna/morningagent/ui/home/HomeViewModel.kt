@@ -14,7 +14,10 @@ import com.luna.morningagent.data.agent.ClaudeBriefingClient
 import com.luna.morningagent.data.agent.GeminiBriefingClient
 import com.luna.morningagent.data.agent.ProviderOption
 import com.luna.morningagent.data.model.Briefing
+import com.luna.morningagent.data.model.ProposedAction
 import com.luna.morningagent.data.notion.NotionRestClient
+import com.luna.morningagent.data.notion.NotionRestMutator
+import com.luna.morningagent.data.notion.NotionTaskMutator
 import com.luna.morningagent.data.secure.TokenStore
 import com.luna.morningagent.data.sharedposts.SharedPostsRepository
 import java.time.LocalDateTime
@@ -92,6 +95,12 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     var sharedPostsDbConfigured: Boolean by mutableStateOf(tokenStore.getSharedPostsDbId() != null)
         private set
 
+    // Stable keys of actions Luna has dismissed (or already applied) on the
+    // current briefing. In-memory only this PR — a force-stop clears them.
+    // PR 3 persists into the cached Briefing.
+    var dismissedActionKeys: Set<String> by mutableStateOf(emptySet())
+        private set
+
     init {
         // Hydrate from the on-disk cache first so a cold launch shows the last
         // briefing the worker (or a previous Run Now) wrote, not an Empty state.
@@ -161,6 +170,41 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                 HomeUiState.Error(e.message ?: "Network error")
             } catch (e: Exception) {
                 HomeUiState.Error(e.message ?: "Something went wrong")
+            }
+        }
+    }
+
+    // Dismissal is local UI state — the chip disappears, the underlying
+    // proposed action stays in the cached briefing (PR 3 persists this set).
+    fun dismissAction(action: ProposedAction) {
+        dismissedActionKeys = dismissedActionKeys + action.stableKey()
+    }
+
+    // Apply mutates Notion then refetches. Re-validates the taskId against the
+    // current briefing's task set as a guard against a stale cached Briefing —
+    // belt-and-suspenders on top of AgentRepository's pre-filter.
+    fun applyAction(action: ProposedAction) {
+        val current = (uiState as? HomeUiState.Success)?.briefing
+        val taskIds = current?.tasks?.mapTo(mutableSetOf()) { it.id } ?: emptySet()
+        if (action.taskId !in taskIds) {
+            uiState = HomeUiState.Error("That task isn't in the current briefing — refresh and try again.")
+            return
+        }
+        uiState = HomeUiState.Loading()
+        viewModelScope.launch {
+            try {
+                val mutator: NotionTaskMutator = NotionRestMutator(tokenStore)
+                when (action) {
+                    is ProposedAction.MarkDone        -> mutator.markDone(action.taskId)
+                    is ProposedAction.Reschedule     -> mutator.reschedule(action.taskId, action.newDate)
+                    is ProposedAction.ChangePriority -> mutator.changePriority(action.taskId, action.newPriority)
+                }
+                // Dismiss the chip alongside the apply so the next refetch
+                // doesn't re-render it before the mutation propagates.
+                dismissedActionKeys = dismissedActionKeys + action.stableKey()
+                runNow()
+            } catch (e: Exception) {
+                uiState = HomeUiState.Error(e.message ?: "Couldn't apply that action")
             }
         }
     }
