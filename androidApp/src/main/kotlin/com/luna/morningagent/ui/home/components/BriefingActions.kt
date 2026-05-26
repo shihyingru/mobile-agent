@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -24,13 +26,15 @@ import com.luna.morningagent.ui.theme.MorningAgentTheme
 import com.luna.morningagent.ui.theme.MorningType
 import com.luna.morningagent.ui.theme.morning
 
-// Read-only suggestion chips below the briefing summary. PR 2 wires Apply /
-// Dismiss tap targets; for now it's pure surface — the model proposes, the
-// user reads. Hides itself when actions is empty so the host doesn't guard.
+// Reversible-action chips under the briefing summary. Apply pushes the mutation
+// to Notion (via HomeViewModel.applyAction) then refetches; Dismiss removes
+// the chip from view locally. PR 3 persists dismissals; for now they're VM-scoped.
 @Composable
 fun BriefingActions(
     actions: List<ProposedAction>,
     tasks: List<Task>,
+    onApply: (ProposedAction) -> Unit,
+    onDismiss: (ProposedAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     if (actions.isEmpty()) return
@@ -48,13 +52,23 @@ fun BriefingActions(
         )
         actions.forEach { action ->
             val task = tasksById[action.taskId] ?: return@forEach
-            ActionRow(action = action, task = task)
+            ActionRow(
+                action    = action,
+                task      = task,
+                onApply   = { onApply(action) },
+                onDismiss = { onDismiss(action) },
+            )
         }
     }
 }
 
 @Composable
-private fun ActionRow(action: ProposedAction, task: Task) {
+private fun ActionRow(
+    action: ProposedAction,
+    task: Task,
+    onApply: () -> Unit,
+    onDismiss: () -> Unit,
+) {
     val morning = MaterialTheme.morning
     Row(
         modifier              = Modifier.fillMaxWidth(),
@@ -79,6 +93,28 @@ private fun ActionRow(action: ProposedAction, task: Task) {
                 style = MorningType.MetaMono,
                 color = morning.textMuted,
             )
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                TextButton(
+                    onClick        = onApply,
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                ) {
+                    Text(
+                        text  = "Apply",
+                        style = MorningType.ButtonLabel,
+                        color = morning.accent,
+                    )
+                }
+                TextButton(
+                    onClick        = onDismiss,
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                ) {
+                    Text(
+                        text  = "Dismiss",
+                        style = MorningType.ButtonLabel,
+                        color = morning.textMuted,
+                    )
+                }
+            }
         }
     }
 }
@@ -98,8 +134,10 @@ private fun BriefingActionsPreview() {
     MorningAgentTheme {
         Box(modifier = Modifier.padding(18.dp)) {
             BriefingActions(
-                actions = PreviewData.sampleProposedActions,
-                tasks   = PreviewData.sampleBriefing.tasks,
+                actions   = PreviewData.sampleProposedActions,
+                tasks     = PreviewData.sampleBriefing.tasks,
+                onApply   = {},
+                onDismiss = {},
             )
         }
     }
@@ -110,7 +148,12 @@ private fun BriefingActionsPreview() {
 private fun BriefingActionsEmptyPreview() {
     MorningAgentTheme {
         Box(modifier = Modifier.padding(18.dp)) {
-            BriefingActions(actions = emptyList(), tasks = emptyList())
+            BriefingActions(
+                actions   = emptyList(),
+                tasks     = emptyList(),
+                onApply   = {},
+                onDismiss = {},
+            )
         }
     }
 }
