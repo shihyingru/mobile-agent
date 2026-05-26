@@ -50,6 +50,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.luna.morningagent.R
 import com.luna.morningagent.data.PreviewData
+import com.luna.morningagent.ui.home.components.BriefingActions
 import com.luna.morningagent.ui.home.components.BriefingBlock
 import com.luna.morningagent.ui.home.components.StatusRow
 import com.luna.morningagent.ui.home.components.TaskCard
@@ -180,6 +181,16 @@ private fun HomeScreenContent(
                     briefing = briefing,
                     modifier = Modifier.padding(horizontal = 4.dp),
                 )
+            }
+
+            if (briefing != null && briefing.actions.isNotEmpty()) {
+                item {
+                    BriefingActions(
+                        actions  = briefing.actions,
+                        tasks    = briefing.tasks,
+                        modifier = Modifier.padding(horizontal = 4.dp),
+                    )
+                }
             }
 
             item { TodaySectionLabel(count = tasks.size) }

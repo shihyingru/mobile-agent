@@ -2,17 +2,31 @@ package com.luna.morningagent.data
 
 import com.luna.morningagent.data.model.Briefing
 import com.luna.morningagent.data.model.Priority
+import com.luna.morningagent.data.model.ProposedAction
 import com.luna.morningagent.data.model.Task
 import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
 
 @OptIn(ExperimentalTime::class)
 object PreviewData {
+    val sampleProposedActions: List<ProposedAction> = listOf(
+        ProposedAction.MarkDone(
+            taskId = "3",
+            reason = "Looks like you already replied yesterday.",
+        ),
+        ProposedAction.Reschedule(
+            taskId = "2",
+            reason = "PR review fits better tomorrow with a 1-hour block.",
+            newDate = "2026-05-27",
+        ),
+    )
+
     val sampleBriefing = Briefing(
         generatedAt = Clock.System.now(),
         model       = "gemini-2.5",
         tokens      = 312,
         summary     = "Focus on the SDK doc first — it unblocks two downstream tasks and Maya's PR review can wait until after lunch when you'll be sharper.",
+        actions     = sampleProposedActions,
         tasks = listOf(
             Task(
                 id               = "1",

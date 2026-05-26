@@ -31,10 +31,11 @@ class GeminiBriefingClient(
 
         if (tasks.isEmpty()) {
             return BriefingDraft(
-                summary      = "No high-priority tasks today. Take the morning back.",
-                tipsByTaskId = emptyMap(),
-                model        = option.id,
-                tokens       = 0,
+                summary         = "No high-priority tasks today. Take the morning back.",
+                tipsByTaskId    = emptyMap(),
+                proposedActions = emptyList(),
+                model           = option.id,
+                tokens          = 0,
             )
         }
 
@@ -48,10 +49,11 @@ class GeminiBriefingClient(
         val parsed = parseBriefingResponse(assistant.content)
 
         return BriefingDraft(
-            summary      = parsed.summary.ifBlank { BRIEFING_FALLBACK_SUMMARY },
-            tipsByTaskId = parsed.tips,
-            model        = option.id,
-            tokens       = assistant.metaInfo.totalTokensCount ?: 0,
+            summary         = parsed.summary.ifBlank { BRIEFING_FALLBACK_SUMMARY },
+            tipsByTaskId    = parsed.tips,
+            proposedActions = parsed.proposedActions.toProposedActions(),
+            model           = option.id,
+            tokens          = assistant.metaInfo.totalTokensCount ?: 0,
         )
     }
 }

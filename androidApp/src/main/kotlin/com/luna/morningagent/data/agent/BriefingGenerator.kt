@@ -1,5 +1,6 @@
 package com.luna.morningagent.data.agent
 
+import com.luna.morningagent.data.model.ProposedAction
 import com.luna.morningagent.data.model.Task
 
 // Boundary for "given today's high-priority tasks, produce a morning briefing." The
@@ -18,6 +19,10 @@ interface BriefingGenerator {
 data class BriefingDraft(
     val summary: String,
     val tipsByTaskId: Map<String, String>,
+    // Raw, syntactically-valid proposed actions from the model. AgentRepository
+    // validates taskIds against the fetched set and caps the list before they
+    // reach the Briefing.
+    val proposedActions: List<ProposedAction>,
     val model: String,
     val tokens: Int,
 )

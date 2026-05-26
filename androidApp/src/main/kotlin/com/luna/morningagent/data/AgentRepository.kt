@@ -43,12 +43,20 @@ class AgentRepository(
             t.copy(tip = draft.tipsByTaskId[t.id]?.trim().orEmpty())
         }
 
+        // Validate proposed actions against the fetched task set — a hallucinated
+        // taskId never reaches the UI. Cap at 2 so a noisy model can't spam chips.
+        val taskIds = tasks.mapTo(mutableSetOf()) { it.id }
+        val validatedActions = draft.proposedActions
+            .filter { it.taskId in taskIds }
+            .take(2)
+
         val briefing = Briefing(
             generatedAt = Clock.System.now(),
             summary     = draft.summary,
             tasks       = tasksWithTips,
             model       = draft.model,
             tokens      = draft.tokens,
+            actions     = validatedActions,
         )
 
         // Persist so a cold app launch can show the morning's briefing without
