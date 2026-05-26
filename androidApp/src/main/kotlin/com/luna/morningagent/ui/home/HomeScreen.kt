@@ -29,10 +29,13 @@ import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -71,13 +74,21 @@ fun HomeScreen(
     // and came back" case faster than waiting for the next 30s tick.
     LaunchedEffect(Unit) { vm.refreshClock() }
 
+    val snackbarHostState = remember { SnackbarHostState() }
+    LaunchedEffect(vm.snackbarMessage) {
+        vm.snackbarMessage?.let { msg ->
+            snackbarHostState.showSnackbar(msg)
+            vm.snackbarShown()
+        }
+    }
+
     HomeScreenContent(
         uiState                = vm.uiState,
         nextRunLabel           = vm.nextRunLabel,
         headerDateLine         = vm.headerDateLine,
         pendingSharedPosts     = vm.pendingSharedPostsCount,
         sharedPostsDbConfigured = vm.sharedPostsDbConfigured,
-        dismissedActionKeys    = vm.dismissedActionKeys,
+        snackbarHostState      = snackbarHostState,
         onRunNow               = vm::runNow,
         onApplyAction          = vm::applyAction,
         onDismissAction        = vm::dismissAction,
@@ -98,7 +109,7 @@ private fun HomeScreenContent(
     onNavigateToSettings: () -> Unit,
     onNavigateToSavedPosts: () -> Unit,
     modifier: Modifier = Modifier,
-    dismissedActionKeys: Set<String> = emptySet(),
+    snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
     onApplyAction: (ProposedAction) -> Unit = {},
     onDismissAction: (ProposedAction) -> Unit = {},
 ) {
@@ -192,7 +203,7 @@ private fun HomeScreenContent(
 
             if (briefing != null) {
                 val visibleActions = briefing.actions
-                    .filterNot { it.stableKey() in dismissedActionKeys }
+                    .filterNot { it.stableKey() in briefing.dismissedActionIds }
                 if (visibleActions.isNotEmpty()) {
                     item {
                         BriefingActions(
@@ -245,6 +256,14 @@ private fun HomeScreenContent(
                         ),
                     ),
                 ),
+        )
+
+        // Snackbar host overlay — anchors above the gesture nav bar.
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier  = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = navBars.calculateBottomPadding() + 16.dp),
         )
     }
 }

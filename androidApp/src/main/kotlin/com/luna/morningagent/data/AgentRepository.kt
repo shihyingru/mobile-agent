@@ -76,6 +76,20 @@ class AgentRepository(
         return runCatching { briefingJson.decodeFromString(Briefing.serializer(), json) }.getOrNull()
     }
 
+    // Adds an action's stable key to the cached briefing's dismissed set and
+    // re-persists. No-op if there's no cached briefing or the id is already
+    // dismissed. Persistence failure is swallowed — worst case the dismissal
+    // doesn't survive process death (in-memory state still updated by caller).
+    fun saveDismissal(actionId: String) {
+        val store = tokenStore ?: return
+        val current = getLastBriefing() ?: return
+        if (actionId in current.dismissedActionIds) return
+        val updated = current.copy(dismissedActionIds = current.dismissedActionIds + actionId)
+        runCatching {
+            store.saveLastBriefingJson(briefingJson.encodeToString(Briefing.serializer(), updated))
+        }
+    }
+
     private companion object {
         val briefingJson = Json { ignoreUnknownKeys = true }
     }
