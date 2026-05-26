@@ -12,12 +12,18 @@ sealed class ProposedAction {
     abstract val taskId: String
     abstract val reason: String
 
+    // Stable identity used for dismissal tracking (PR 2) and persistence (PR 3).
+    // Type + payload so "same task, different priority change" gets distinct keys.
+    abstract fun stableKey(): String
+
     @Serializable
     @SerialName("mark_done")
     data class MarkDone(
         override val taskId: String,
         override val reason: String,
-    ) : ProposedAction()
+    ) : ProposedAction() {
+        override fun stableKey() = "mark_done:$taskId"
+    }
 
     @Serializable
     @SerialName("reschedule")
@@ -25,7 +31,9 @@ sealed class ProposedAction {
         override val taskId: String,
         override val reason: String,
         val newDate: String,  // ISO yyyy-mm-dd; model-supplied, not parsed yet
-    ) : ProposedAction()
+    ) : ProposedAction() {
+        override fun stableKey() = "reschedule:$taskId:$newDate"
+    }
 
     @Serializable
     @SerialName("change_priority")
@@ -33,5 +41,7 @@ sealed class ProposedAction {
         override val taskId: String,
         override val reason: String,
         val newPriority: Priority,
-    ) : ProposedAction()
+    ) : ProposedAction() {
+        override fun stableKey() = "change_priority:$taskId:${newPriority.name}"
+    }
 }

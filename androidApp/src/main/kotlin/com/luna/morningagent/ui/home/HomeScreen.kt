@@ -50,6 +50,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.luna.morningagent.R
 import com.luna.morningagent.data.PreviewData
+import com.luna.morningagent.data.model.ProposedAction
 import com.luna.morningagent.ui.home.components.BriefingActions
 import com.luna.morningagent.ui.home.components.BriefingBlock
 import com.luna.morningagent.ui.home.components.StatusRow
@@ -76,7 +77,10 @@ fun HomeScreen(
         headerDateLine         = vm.headerDateLine,
         pendingSharedPosts     = vm.pendingSharedPostsCount,
         sharedPostsDbConfigured = vm.sharedPostsDbConfigured,
+        dismissedActionKeys    = vm.dismissedActionKeys,
         onRunNow               = vm::runNow,
+        onApplyAction          = vm::applyAction,
+        onDismissAction        = vm::dismissAction,
         onNavigateToSettings   = onNavigateToSettings,
         onNavigateToSavedPosts = onNavigateToSavedPosts,
         modifier               = modifier,
@@ -94,6 +98,9 @@ private fun HomeScreenContent(
     onNavigateToSettings: () -> Unit,
     onNavigateToSavedPosts: () -> Unit,
     modifier: Modifier = Modifier,
+    dismissedActionKeys: Set<String> = emptySet(),
+    onApplyAction: (ProposedAction) -> Unit = {},
+    onDismissAction: (ProposedAction) -> Unit = {},
 ) {
     val morning = MaterialTheme.morning
     val context = LocalContext.current
@@ -183,13 +190,19 @@ private fun HomeScreenContent(
                 )
             }
 
-            if (briefing != null && briefing.actions.isNotEmpty()) {
-                item {
-                    BriefingActions(
-                        actions  = briefing.actions,
-                        tasks    = briefing.tasks,
-                        modifier = Modifier.padding(horizontal = 4.dp),
-                    )
+            if (briefing != null) {
+                val visibleActions = briefing.actions
+                    .filterNot { it.stableKey() in dismissedActionKeys }
+                if (visibleActions.isNotEmpty()) {
+                    item {
+                        BriefingActions(
+                            actions  = visibleActions,
+                            tasks    = briefing.tasks,
+                            onApply  = onApplyAction,
+                            onDismiss = onDismissAction,
+                            modifier = Modifier.padding(horizontal = 4.dp),
+                        )
+                    }
                 }
             }
 
