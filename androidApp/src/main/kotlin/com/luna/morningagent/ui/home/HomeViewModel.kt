@@ -95,11 +95,16 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     var sharedPostsDbConfigured: Boolean by mutableStateOf(tokenStore.getSharedPostsDbId() != null)
         private set
 
-    // Stable keys of actions Luna has dismissed (or already applied) on the
-    // current briefing. In-memory only this PR — a force-stop clears them.
-    // PR 3 persists into the cached Briefing.
-    var dismissedActionKeys: Set<String> by mutableStateOf(emptySet())
+    // Transient snackbar message — set by applyAction/dismissAction, consumed
+    // by HomeScreen's SnackbarHost via a LaunchedEffect. The screen calls
+    // snackbarShown() once the message is displayed so a repeat of the same
+    // message can fire again.
+    var snackbarMessage: String? by mutableStateOf(null)
         private set
+
+    fun snackbarShown() {
+        snackbarMessage = null
+    }
 
     init {
         // Hydrate from the on-disk cache first so a cold launch shows the last
@@ -174,20 +179,28 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // Dismissal is local UI state — the chip disappears, the underlying
-    // proposed action stays in the cached briefing (PR 3 persists this set).
+    // Dismissal updates the cached briefing's dismissedActionIds and re-renders
+    // the chip as gone. Persisted via repo.saveDismissal so the dismissal
+    // survives process death until the next runAgent() writes a fresh briefing.
     fun dismissAction(action: ProposedAction) {
-        dismissedActionKeys = dismissedActionKeys + action.stableKey()
+        val current = (uiState as? HomeUiState.Success)?.briefing ?: return
+        val key = action.stableKey()
+        if (key in current.dismissedActionIds) return
+        uiState = HomeUiState.Success(
+            current.copy(dismissedActionIds = current.dismissedActionIds + key)
+        )
+        repo.saveDismissal(key)
     }
 
-    // Apply mutates Notion then refetches. Re-validates the taskId against the
-    // current briefing's task set as a guard against a stale cached Briefing —
-    // belt-and-suspenders on top of AgentRepository's pre-filter.
+    // Apply mutates Notion, then refetches. Re-validates the taskId against the
+    // current briefing as belt-and-suspenders on top of AgentRepository's
+    // pre-filter. Snackbar reports success / failure; on failure the previous
+    // Success state is restored so the chip remains visible for retry.
     fun applyAction(action: ProposedAction) {
-        val current = (uiState as? HomeUiState.Success)?.briefing
-        val taskIds = current?.tasks?.mapTo(mutableSetOf()) { it.id } ?: emptySet()
+        val prevState = uiState as? HomeUiState.Success ?: return
+        val taskIds = prevState.briefing.tasks.mapTo(mutableSetOf()) { it.id }
         if (action.taskId !in taskIds) {
-            uiState = HomeUiState.Error("That task isn't in the current briefing — refresh and try again.")
+            snackbarMessage = "That task isn't in the current briefing — refresh and try again."
             return
         }
         uiState = HomeUiState.Loading()
@@ -199,12 +212,14 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                     is ProposedAction.Reschedule     -> mutator.reschedule(action.taskId, action.newDate)
                     is ProposedAction.ChangePriority -> mutator.changePriority(action.taskId, action.newPriority)
                 }
-                // Dismiss the chip alongside the apply so the next refetch
-                // doesn't re-render it before the mutation propagates.
-                dismissedActionKeys = dismissedActionKeys + action.stableKey()
+                // Persist the dismissal so the chip doesn't pop back if runNow
+                // races slower than the model re-suggesting the same thing.
+                repo.saveDismissal(action.stableKey())
+                snackbarMessage = "Applied"
                 runNow()
             } catch (e: Exception) {
-                uiState = HomeUiState.Error(e.message ?: "Couldn't apply that action")
+                uiState = prevState
+                snackbarMessage = e.message ?: "Couldn't apply that action"
             }
         }
     }

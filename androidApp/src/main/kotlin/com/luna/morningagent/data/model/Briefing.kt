@@ -15,4 +15,9 @@ data class Briefing(
     // declines; capped at 2 in AgentRepository. Default keeps old cached
     // briefings (written before this field existed) decoding cleanly.
     val actions: List<ProposedAction> = emptyList(),
+    // Stable keys of actions dismissed (or applied) on this briefing. Persisted
+    // alongside the briefing in TokenStore so dismissals survive process death.
+    // Reset implicitly when runAgent() writes a fresh Briefing — new actions
+    // get new keys anyway. Default keeps old caches decoding cleanly.
+    val dismissedActionIds: Set<String> = emptySet(),
 )
