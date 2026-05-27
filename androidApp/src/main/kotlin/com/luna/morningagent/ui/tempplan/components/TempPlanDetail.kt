@@ -12,8 +12,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -170,12 +174,14 @@ fun TempPlanDetail(
 
         Spacer(Modifier.height(24.dp))
 
-        TextButton(onClick = onDeletePlan, modifier = Modifier.fillMaxWidth()) {
-            Text(
-                text  = stringResource(R.string.temp_plan_delete_button),
-                style = MorningType.ButtonLabel,
-                color = morning.error,
-            )
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+            IconButton(onClick = onDeletePlan) {
+                Icon(
+                    imageVector        = Icons.Outlined.Delete,
+                    contentDescription = stringResource(R.string.temp_plan_delete_button),
+                    tint               = morning.error,
+                )
+            }
         }
     }
 }
