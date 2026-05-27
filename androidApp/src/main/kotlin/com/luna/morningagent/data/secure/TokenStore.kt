@@ -178,6 +178,9 @@ class TokenStore(context: Context) {
     fun saveSharedPostsCacheJson(json: String) = writeString(KEY_SHARED_POSTS_CACHE, json)
     fun getSharedPostsCacheJson(): String? = readString(KEY_SHARED_POSTS_CACHE)
 
+    fun saveTempPlansCacheJson(json: String) = writeString(KEY_TEMP_PLANS_CACHE, json)
+    fun getTempPlansCacheJson(): String? = readString(KEY_TEMP_PLANS_CACHE)
+
     companion object {
         private const val KEY_GEMINI               = "gemini_api_key"
         private const val KEY_NOTION               = "notion_token"
@@ -194,6 +197,7 @@ class TokenStore(context: Context) {
         private const val KEY_SHARED_POSTS_DB_ID   = "shared_posts_db_id"
         private const val KEY_SHARED_POSTS_TAXONOMY = "shared_posts_taxonomy"
         private const val KEY_SHARED_POSTS_CACHE   = "shared_posts_cache_json"
+        private const val KEY_TEMP_PLANS_CACHE     = "temp_plans_cache_json"
 
         private const val DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
         private const val DEFAULT_CLAUDE_MODEL = "claude-sonnet-4-6"
@@ -208,6 +212,7 @@ class TokenStore(context: Context) {
             KEY_GEMINI_MODEL, KEY_CLAUDE, KEY_CLAUDE_MODEL,
             KEY_PROVIDER, KEY_LAST_BRIEFING,
             KEY_SHARED_POSTS_DB_ID, KEY_SHARED_POSTS_TAXONOMY, KEY_SHARED_POSTS_CACHE,
+            KEY_TEMP_PLANS_CACHE,
         )
         private val BOOLEAN_KEYS = listOf(KEY_AUTO_RUN, KEY_DAILY_BRIEFING)
         private val INT_KEYS     = listOf(KEY_BRIEFING_HOUR, KEY_BRIEFING_MINUTE)
