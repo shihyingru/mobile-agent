@@ -16,6 +16,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.luna.morningagent.data.secure.TokenStore
 import com.luna.morningagent.worker.BriefingScheduler
+import com.luna.morningagent.worker.EveningScheduler
 import com.luna.morningagent.worker.MorningAgentWorker
 
 class MainActivity : ComponentActivity() {
@@ -35,13 +36,14 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         // Notification channel + KEEP-policy schedule. Both idempotent so this
-        // is safe on every launch; honors the user's toggle in Settings.
+        // is safe on every launch; honors each toggle in Settings.
         MorningAgentWorker.ensureNotificationChannel(this)
         val store = TokenStore(this)
-        if (store.getDailyBriefingEnabled()) {
-            BriefingScheduler.ensure(this)
-            maybeRequestNotificationPermission()
-        }
+        val morningOn = store.getDailyBriefingEnabled()
+        val eveningOn = store.getDailyEveningEnabled()
+        if (morningOn) BriefingScheduler.ensure(this)
+        if (eveningOn) EveningScheduler.ensure(this)
+        if (morningOn || eveningOn) maybeRequestNotificationPermission()
 
         consumeNotificationIntent(intent)
 

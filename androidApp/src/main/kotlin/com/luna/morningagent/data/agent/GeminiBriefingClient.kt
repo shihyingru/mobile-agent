@@ -2,6 +2,8 @@ package com.luna.morningagent.data.agent
 
 import ai.koog.prompt.executor.llms.all.simpleGoogleAIExecutor
 import ai.koog.prompt.message.Message
+import com.luna.morningagent.data.model.Briefing
+import com.luna.morningagent.data.model.BriefingKind
 import com.luna.morningagent.data.model.Task
 import com.luna.morningagent.data.secure.TokenStore
 
@@ -20,6 +22,8 @@ class GeminiBriefingClient(
 
     override suspend fun generate(
         tasks: List<Task>,
+        kind: BriefingKind,
+        morningContext: Briefing?,
         onAttempt: (Int, Int) -> Unit,
     ): BriefingDraft {
         val apiKey = tokenStore.getGeminiKey()
@@ -31,7 +35,10 @@ class GeminiBriefingClient(
 
         if (tasks.isEmpty()) {
             return BriefingDraft(
-                summary         = "No high-priority tasks today. Take the morning back.",
+                summary         = when (kind) {
+                    BriefingKind.MORNING -> "No high-priority tasks today. Take the morning back."
+                    BriefingKind.EVENING -> "Nothing left to tidy. Tomorrow is set."
+                },
                 tipsByTaskId    = emptyMap(),
                 proposedActions = emptyList(),
                 model           = option.id,
@@ -39,9 +46,13 @@ class GeminiBriefingClient(
             )
         }
 
+        val builtPrompt = when (kind) {
+            BriefingKind.MORNING -> buildBriefingPrompt(tasks)
+            BriefingKind.EVENING -> buildReflectionPrompt(tasks, morningContext)
+        }
         val executor = simpleGoogleAIExecutor(apiKey)
         val responses = runBriefingWithRetry(onAttempt) {
-            executor.execute(prompt = buildBriefingPrompt(tasks), model = option.koogModel)
+            executor.execute(prompt = builtPrompt, model = option.koogModel)
         }
 
         val assistant = responses.filterIsInstance<Message.Assistant>().firstOrNull()

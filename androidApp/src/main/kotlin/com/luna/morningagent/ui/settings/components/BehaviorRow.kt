@@ -5,12 +5,15 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material3.Icon
@@ -33,9 +36,9 @@ import com.luna.morningagent.ui.theme.morning
  *
  * Title (sans 14.5sp/500) + sub (serif italic 13sp). Right side is either
  * a Material3 Switch (toggle) or a clickable value + chevron (drill-in).
- * All rows share the same left padding so the title column stays aligned
- * across the section — child rows like Briefing time line up with the
- * toggle rows above instead of inset.
+ * Pass `isSub = true` on a value row (e.g. Briefing time, Evening time) to
+ * render the 2dp `accentSoft` left rule + indent per DESIGN_SYSTEM §3.12,
+ * visually nesting it under the toggle row it depends on.
  */
 @Composable
 fun BehaviorToggleRow(
@@ -70,26 +73,55 @@ fun BehaviorValueRow(
     value: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    isSub: Boolean = false,
 ) {
     val morning = MaterialTheme.morning
-    BehaviorRowFrame(modifier = modifier.clickable(onClick = onClick)) {
-        BehaviorRowText(title = title, sub = sub)
+    if (isSub) {
         Row(
+            modifier              = modifier
+                .fillMaxWidth()
+                .height(IntrinsicSize.Min)
+                .clickable(onClick = onClick),
             verticalAlignment     = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Text(
-                text  = value,
-                style = MorningType.ModelId.copy(fontSize = androidx.compose.ui.unit.TextUnit(14f, androidx.compose.ui.unit.TextUnitType.Sp)),
-                color = morning.accent,
+            Box(
+                modifier = Modifier
+                    .width(2.dp)
+                    .fillMaxHeight()
+                    .background(morning.accentSoft),
             )
-            Icon(
-                imageVector        = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
-                contentDescription = null,
-                tint               = morning.accent,
-                modifier           = Modifier.size(14.dp),
-            )
+            Spacer(modifier = Modifier.width(12.dp))
+            BehaviorRowFrame {
+                BehaviorRowText(title = title, sub = sub)
+                BehaviorValueTrailing(value = value)
+            }
         }
+    } else {
+        BehaviorRowFrame(modifier = modifier.clickable(onClick = onClick)) {
+            BehaviorRowText(title = title, sub = sub)
+            BehaviorValueTrailing(value = value)
+        }
+    }
+}
+
+@Composable
+private fun BehaviorValueTrailing(value: String) {
+    val morning = MaterialTheme.morning
+    Row(
+        verticalAlignment     = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text(
+            text  = value,
+            style = MorningType.ModelId.copy(fontSize = androidx.compose.ui.unit.TextUnit(14f, androidx.compose.ui.unit.TextUnitType.Sp)),
+            color = morning.accent,
+        )
+        Icon(
+            imageVector        = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+            contentDescription = null,
+            tint               = morning.accent,
+            modifier           = Modifier.size(14.dp),
+        )
     }
 }
 
@@ -166,6 +198,7 @@ private fun BehaviorRowsPreview() {
                 sub      = "Wakes the agent and delivers the briefing.",
                 value    = "9:00 AM",
                 onClick  = {},
+                isSub    = true,
             )
             BehaviorDivider()
         }

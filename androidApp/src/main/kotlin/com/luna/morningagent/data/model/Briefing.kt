@@ -20,4 +20,7 @@ data class Briefing(
     // Reset implicitly when runAgent() writes a fresh Briefing — new actions
     // get new keys anyway. Default keeps old caches decoding cleanly.
     val dismissedActionIds: Set<String> = emptySet(),
+    // MORNING (default) for the 9am briefing; EVENING for the wrap-up.
+    // Default keeps caches written before this field existed decoding cleanly.
+    val kind: BriefingKind = BriefingKind.MORNING,
 )
