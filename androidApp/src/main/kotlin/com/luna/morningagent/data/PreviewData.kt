@@ -1,6 +1,7 @@
 package com.luna.morningagent.data
 
 import com.luna.morningagent.data.model.Briefing
+import com.luna.morningagent.data.model.BriefingKind
 import com.luna.morningagent.data.model.Priority
 import com.luna.morningagent.data.model.ProposedAction
 import com.luna.morningagent.data.model.Task
@@ -57,6 +58,47 @@ object PreviewData {
                 notionUrl        = "https://notion.so/...",
                 notionRef        = "NOT-1044",
                 area             = "Design",
+            ),
+        ),
+    )
+
+    val sampleEveningReflection = Briefing(
+        generatedAt = Clock.System.now(),
+        model       = "gemini-2.5",
+        tokens      = 198,
+        summary     = "Good day — the SDK doc is drafted and the PR review is done. Design feedback slipped; carry it to tomorrow with a fresh block.",
+        kind        = BriefingKind.EVENING,
+        actions     = listOf(
+            ProposedAction.Reschedule(
+                taskId  = "3",
+                reason  = "Didn't get to it today — move to tomorrow morning.",
+                newDate = "2026-05-28",
+            ),
+            ProposedAction.MarkDone(
+                taskId = "2",
+                reason = "PR #482 was merged after your review.",
+            ),
+        ),
+        tasks = listOf(
+            Task(
+                id               = "3",
+                title            = "Reply to design feedback",
+                priority         = Priority.MID,
+                tip              = "Carry over — first thing tomorrow.",
+                estimatedMinutes = 20,
+                notionUrl        = "https://notion.so/...",
+                notionRef        = "NOT-1044",
+                area             = "Design",
+            ),
+            Task(
+                id               = "2",
+                title            = "Review PR #482",
+                priority         = Priority.HIGH,
+                tip              = "Done — merged.",
+                estimatedMinutes = 45,
+                notionUrl        = "https://notion.so/...",
+                notionRef        = "NOT-1043",
+                area             = "Engineering",
             ),
         ),
     )

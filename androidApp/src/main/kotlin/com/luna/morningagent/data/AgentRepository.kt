@@ -109,11 +109,24 @@ class AgentRepository(
     // doesn't survive process death (in-memory state still updated by caller).
     fun saveDismissal(actionId: String) {
         val store = tokenStore ?: return
-        val current = getLastBriefing() ?: return
-        if (actionId in current.dismissedActionIds) return
-        val updated = current.copy(dismissedActionIds = current.dismissedActionIds + actionId)
-        runCatching {
-            store.saveLastBriefingJson(briefingJson.encodeToString(Briefing.serializer(), updated))
+
+        getLastBriefing()?.let { morning ->
+            if (actionId !in morning.dismissedActionIds &&
+                morning.actions.any { it.stableKey() == actionId }
+            ) {
+                val updated = morning.copy(dismissedActionIds = morning.dismissedActionIds + actionId)
+                runCatching { store.saveLastBriefingJson(briefingJson.encodeToString(Briefing.serializer(), updated)) }
+                return
+            }
+        }
+
+        getLastReflection()?.let { evening ->
+            if (actionId !in evening.dismissedActionIds &&
+                evening.actions.any { it.stableKey() == actionId }
+            ) {
+                val updated = evening.copy(dismissedActionIds = evening.dismissedActionIds + actionId)
+                runCatching { store.saveLastReflectionJson(briefingJson.encodeToString(Briefing.serializer(), updated)) }
+            }
         }
     }
 

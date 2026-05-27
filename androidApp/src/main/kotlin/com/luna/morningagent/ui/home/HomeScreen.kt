@@ -3,6 +3,7 @@ package com.luna.morningagent.ui.home
 import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -39,10 +40,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.core.net.toUri
 import androidx.compose.ui.text.style.TextAlign
@@ -53,6 +56,8 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.luna.morningagent.R
 import com.luna.morningagent.data.PreviewData
+import com.luna.morningagent.data.model.Briefing
+import com.luna.morningagent.data.model.BriefingKind
 import com.luna.morningagent.data.model.ProposedAction
 import com.luna.morningagent.ui.home.components.BriefingActions
 import com.luna.morningagent.ui.home.components.BriefingBlock
@@ -83,18 +88,22 @@ fun HomeScreen(
     }
 
     HomeScreenContent(
-        uiState                = vm.uiState,
-        nextRunLabel           = vm.nextRunLabel,
-        headerDateLine         = vm.headerDateLine,
-        pendingSharedPosts     = vm.pendingSharedPostsCount,
+        uiState                 = vm.uiState,
+        nextRunLabel            = vm.nextRunLabel,
+        headerDateLine          = vm.headerDateLine,
+        pendingSharedPosts      = vm.pendingSharedPostsCount,
         sharedPostsDbConfigured = vm.sharedPostsDbConfigured,
-        snackbarHostState      = snackbarHostState,
-        onRunNow               = vm::runNow,
-        onApplyAction          = vm::applyAction,
-        onDismissAction        = vm::dismissAction,
-        onNavigateToSettings   = onNavigateToSettings,
-        onNavigateToSavedPosts = onNavigateToSavedPosts,
-        modifier               = modifier,
+        displayedBriefing       = vm.displayedBriefing,
+        canSwipe                = vm.canSwipe,
+        displayedKind           = vm.displayedKind,
+        snackbarHostState       = snackbarHostState,
+        onRunNow                = vm::runNowForCurrentSlot,
+        onSwipeToggle           = vm::swipeToggle,
+        onApplyAction           = vm::applyAction,
+        onDismissAction         = vm::dismissAction,
+        onNavigateToSettings    = onNavigateToSettings,
+        onNavigateToSavedPosts  = onNavigateToSavedPosts,
+        modifier                = modifier,
     )
 }
 
@@ -105,7 +114,11 @@ private fun HomeScreenContent(
     headerDateLine: String,
     pendingSharedPosts: Int,
     sharedPostsDbConfigured: Boolean,
+    displayedBriefing: Briefing?,
+    canSwipe: Boolean,
+    displayedKind: BriefingKind,
     onRunNow: () -> Unit,
+    onSwipeToggle: () -> Unit,
     onNavigateToSettings: () -> Unit,
     onNavigateToSavedPosts: () -> Unit,
     modifier: Modifier = Modifier,
@@ -116,7 +129,7 @@ private fun HomeScreenContent(
     val morning = MaterialTheme.morning
     val context = LocalContext.current
     val isLoading = uiState is HomeUiState.Loading
-    val briefing  = (uiState as? HomeUiState.Success)?.briefing
+    val briefing  = displayedBriefing
     val tasks     = briefing?.tasks.orEmpty()
 
     val statusBars = WindowInsets.statusBars.asPaddingValues()
@@ -195,9 +208,36 @@ private fun HomeScreenContent(
             }
 
             item {
+                val swipeThresholdPx = with(LocalDensity.current) { 80.dp.toPx() }
                 BriefingBlock(
-                    briefing = briefing,
-                    modifier = Modifier.padding(horizontal = 4.dp),
+                    briefing      = briefing,
+                    canSwipe      = canSwipe,
+                    displayedKind = displayedKind,
+                    modifier      = Modifier
+                        .padding(horizontal = 4.dp)
+                        .then(
+                            if (canSwipe) Modifier.pointerInput(canSwipe) {
+                                var accumulated = 0f
+                                var fired = false
+                                detectHorizontalDragGestures(
+                                    onDragStart = {
+                                        accumulated = 0f
+                                        fired = false
+                                    },
+                                    onDragEnd = {},
+                                    onDragCancel = {},
+                                    onHorizontalDrag = { _, dragAmount ->
+                                        if (!fired) {
+                                            accumulated += dragAmount
+                                            if (kotlin.math.abs(accumulated) > swipeThresholdPx) {
+                                                fired = true
+                                                onSwipeToggle()
+                                            }
+                                        }
+                                    },
+                                )
+                            } else Modifier
+                        ),
                 )
             }
 
@@ -472,14 +512,18 @@ private fun SkeletonCard() {
 private fun HomeSuccessPreview() {
     MorningAgentTheme {
         HomeScreenContent(
-            uiState              = HomeUiState.Success(PreviewData.sampleBriefing),
-            nextRunLabel         = "tomorrow, 9:00",
-            headerDateLine       = "FRIDAY · MAY 15 · 2:23 PM",
-            onRunNow             = {},
-            pendingSharedPosts     = 0,
+            uiState                 = HomeUiState.Success(PreviewData.sampleBriefing),
+            nextRunLabel            = "tomorrow, 9:00",
+            headerDateLine          = "FRIDAY · MAY 15 · 2:23 PM",
+            displayedBriefing       = PreviewData.sampleBriefing,
+            canSwipe                = false,
+            displayedKind           = BriefingKind.MORNING,
+            onRunNow                = {},
+            onSwipeToggle           = {},
+            pendingSharedPosts      = 0,
             sharedPostsDbConfigured = true,
-            onNavigateToSettings   = {},
-            onNavigateToSavedPosts = {},
+            onNavigateToSettings    = {},
+            onNavigateToSavedPosts  = {},
         )
     }
 }
@@ -489,14 +533,18 @@ private fun HomeSuccessPreview() {
 private fun HomeLoadingPreview() {
     MorningAgentTheme {
         HomeScreenContent(
-            uiState              = HomeUiState.Loading(),
-            nextRunLabel         = "tomorrow, 9:00",
-            headerDateLine       = "FRIDAY · MAY 15 · 2:23 PM",
-            onRunNow             = {},
-            pendingSharedPosts     = 0,
+            uiState                 = HomeUiState.Loading(),
+            nextRunLabel            = "tomorrow, 9:00",
+            headerDateLine          = "FRIDAY · MAY 15 · 2:23 PM",
+            displayedBriefing       = null,
+            canSwipe                = false,
+            displayedKind           = BriefingKind.MORNING,
+            onRunNow                = {},
+            onSwipeToggle           = {},
+            pendingSharedPosts      = 0,
             sharedPostsDbConfigured = true,
-            onNavigateToSettings   = {},
-            onNavigateToSavedPosts = {},
+            onNavigateToSettings    = {},
+            onNavigateToSavedPosts  = {},
         )
     }
 }
@@ -506,14 +554,18 @@ private fun HomeLoadingPreview() {
 private fun HomeEmptyPreview() {
     MorningAgentTheme {
         HomeScreenContent(
-            uiState              = HomeUiState.Empty,
-            nextRunLabel         = "tomorrow, 9:00",
-            headerDateLine       = "FRIDAY · MAY 15 · 2:23 PM",
-            onRunNow             = {},
-            pendingSharedPosts     = 0,
+            uiState                 = HomeUiState.Empty,
+            nextRunLabel            = "tomorrow, 9:00",
+            headerDateLine          = "FRIDAY · MAY 15 · 2:23 PM",
+            displayedBriefing       = null,
+            canSwipe                = false,
+            displayedKind           = BriefingKind.MORNING,
+            onRunNow                = {},
+            onSwipeToggle           = {},
+            pendingSharedPosts      = 0,
             sharedPostsDbConfigured = true,
-            onNavigateToSettings   = {},
-            onNavigateToSavedPosts = {},
+            onNavigateToSettings    = {},
+            onNavigateToSavedPosts  = {},
         )
     }
 }
@@ -523,14 +575,18 @@ private fun HomeEmptyPreview() {
 private fun HomeErrorPreview() {
     MorningAgentTheme {
         HomeScreenContent(
-            uiState              = HomeUiState.Error("Couldn't reach Notion. Check your token in Settings."),
-            nextRunLabel         = null,
-            headerDateLine       = "FRIDAY · MAY 15 · 2:23 PM",
-            onRunNow             = {},
-            pendingSharedPosts     = 0,
+            uiState                 = HomeUiState.Error("Couldn't reach Notion. Check your token in Settings."),
+            nextRunLabel            = null,
+            headerDateLine          = "FRIDAY · MAY 15 · 2:23 PM",
+            displayedBriefing       = null,
+            canSwipe                = false,
+            displayedKind           = BriefingKind.MORNING,
+            onRunNow                = {},
+            onSwipeToggle           = {},
+            pendingSharedPosts      = 0,
             sharedPostsDbConfigured = true,
-            onNavigateToSettings   = {},
-            onNavigateToSavedPosts = {},
+            onNavigateToSettings    = {},
+            onNavigateToSavedPosts  = {},
         )
     }
 }

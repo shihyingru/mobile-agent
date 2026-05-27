@@ -24,7 +24,9 @@ import androidx.compose.ui.unit.dp
 import com.luna.morningagent.R
 import com.luna.morningagent.data.PreviewData
 import com.luna.morningagent.data.model.Briefing
+import com.luna.morningagent.data.model.BriefingKind
 import com.luna.morningagent.ui.theme.MorningAgentTheme
+import com.luna.morningagent.ui.theme.MorningThemes
 import com.luna.morningagent.ui.theme.MorningType
 import com.luna.morningagent.ui.theme.morning
 import com.luna.morningagent.ui.theme.slotCopy
@@ -44,9 +46,17 @@ import com.luna.morningagent.ui.theme.slotCopy
 fun BriefingBlock(
     briefing: Briefing?,
     modifier: Modifier = Modifier,
+    canSwipe: Boolean = false,
+    displayedKind: BriefingKind = BriefingKind.MORNING,
 ) {
     val morning = MaterialTheme.morning
     val copy = slotCopy()
+
+    val sectionLabel = if (displayedKind == BriefingKind.EVENING) {
+        stringResource(R.string.section_reflection)
+    } else {
+        stringResource(R.string.section_briefing)
+    }
 
     val bodyText = briefing?.summary ?: stringResource(copy.quote)
     val metaText = briefing?.let {
@@ -67,11 +77,23 @@ fun BriefingBlock(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Text(
-                text  = stringResource(R.string.section_briefing),
+                text  = sectionLabel,
                 style = MorningType.LabelMono,
                 color = morning.accent,
                 modifier = Modifier.weight(1f),
             )
+            if (canSwipe) {
+                val hint = if (displayedKind == BriefingKind.EVENING) {
+                    "← MORNING"
+                } else {
+                    "EVENING →"
+                }
+                Text(
+                    text  = hint,
+                    style = MorningType.MetaMono,
+                    color = morning.textMuted.copy(alpha = 0.5f),
+                )
+            }
             if (metaText != null) {
                 Text(
                     text      = metaText,
@@ -120,6 +142,20 @@ private fun BriefingBlockLoadingPreview() {
     MorningAgentTheme {
         Box(modifier = Modifier.padding(18.dp)) {
             BriefingBlock(briefing = null)
+        }
+    }
+}
+
+@Preview(showBackground = true, backgroundColor = 0xFF1A1A2E, name = "Evening reflection")
+@Composable
+private fun BriefingBlockEveningPreview() {
+    MorningAgentTheme(theme = MorningThemes.Dark) {
+        Box(modifier = Modifier.padding(18.dp)) {
+            BriefingBlock(
+                briefing      = PreviewData.sampleEveningReflection,
+                canSwipe      = true,
+                displayedKind = BriefingKind.EVENING,
+            )
         }
     }
 }

@@ -14,12 +14,15 @@ import com.luna.morningagent.data.agent.ClaudeBriefingClient
 import com.luna.morningagent.data.agent.GeminiBriefingClient
 import com.luna.morningagent.data.agent.ProviderOption
 import com.luna.morningagent.data.model.Briefing
+import com.luna.morningagent.data.model.BriefingKind
 import com.luna.morningagent.data.model.ProposedAction
 import com.luna.morningagent.data.notion.NotionRestClient
 import com.luna.morningagent.data.notion.NotionRestMutator
 import com.luna.morningagent.data.notion.NotionTaskMutator
 import com.luna.morningagent.data.secure.TokenStore
 import com.luna.morningagent.data.sharedposts.SharedPostsRepository
+import com.luna.morningagent.ui.theme.TimeSlot
+import com.luna.morningagent.ui.theme.resolveSlot
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -106,19 +109,56 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         snackbarMessage = null
     }
 
+    // Slot-driven briefing display. During evening/night slots the card swaps
+    // to show the evening reflection (if cached); a swipe override lets the
+    // user peek at the other kind. Reset on every clock tick so slot
+    // transitions clear a stale override.
+
+    var currentSlot: TimeSlot by mutableStateOf(resolveSlot(LocalDateTime.now()))
+        private set
+
+    private var swipeOverride: BriefingKind? by mutableStateOf(null)
+
+    private var cachedEvening: Briefing? by mutableStateOf(null)
+
+    val displayedBriefing: Briefing?
+        get() {
+            val morning = (uiState as? HomeUiState.Success)?.briefing
+            val evening = cachedEvening
+            return when (swipeOverride) {
+                BriefingKind.MORNING -> morning
+                BriefingKind.EVENING -> evening
+                null -> if (isEveningSlot()) evening ?: morning else morning
+            }
+        }
+
+    val canSwipe: Boolean
+        get() = (uiState as? HomeUiState.Success)?.briefing != null && cachedEvening != null
+
+    val displayedKind: BriefingKind
+        get() = displayedBriefing?.kind ?: if (isEveningSlot()) BriefingKind.EVENING else BriefingKind.MORNING
+
+    fun swipeToggle() {
+        if (!canSwipe) return
+        swipeOverride = when (swipeOverride) {
+            BriefingKind.MORNING -> BriefingKind.EVENING
+            BriefingKind.EVENING -> BriefingKind.MORNING
+            null -> if (isEveningSlot()) BriefingKind.MORNING else BriefingKind.EVENING
+        }
+    }
+
+    private fun isEveningSlot(): Boolean =
+        currentSlot == TimeSlot.Evening || currentSlot == TimeSlot.Night
+
     init {
-        // Hydrate from the on-disk cache first so a cold launch shows the last
-        // briefing the worker (or a previous Run Now) wrote, not an Empty state.
-        // If that cached briefing is from today, skip the auto-run — there's no
-        // point burning another Gemini call to regenerate the same data.
         val cached = repo.getLastBriefing()
         val cachedIsFromToday = cached?.let { isFromToday(it) } == true
         if (cached != null) {
             uiState = HomeUiState.Success(cached)
         }
 
-        // Auto-run on first composition only when the user has opted in AND keys
-        // are configured AND the cache is stale (older than today, or absent).
+        cachedEvening = repo.getLastReflection()
+
         if (!cachedIsFromToday && tokenStore.getAutoRun() && hasMinimalConfig()) {
             runNow()
         }
@@ -142,6 +182,13 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         nextRunLabel            = computeNextRunLabel(now)
         pendingSharedPostsCount = sharedPostsRepo.listAll().count { it.pendingSync }
         sharedPostsDbConfigured = tokenStore.getSharedPostsDbId() != null
+
+        val newSlot = resolveSlot(now)
+        if (newSlot != currentSlot) {
+            swipeOverride = null
+            currentSlot = newSlot
+        }
+        cachedEvening = repo.getLastReflection()
     }
 
     private fun startClockTicker() {
@@ -179,16 +226,42 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun runEveningNow() {
+        uiState = HomeUiState.Loading()
+        viewModelScope.launch {
+            try {
+                val reflection = repo.runAgent(BriefingKind.EVENING) { current, total ->
+                    uiState = HomeUiState.Loading(current, total)
+                }
+                cachedEvening = reflection
+                uiState = HomeUiState.Success(reflection)
+            } catch (e: AgentConfigMissingException) {
+                uiState = HomeUiState.Error(e.message ?: "Missing configuration")
+            } catch (e: AgentNetworkException) {
+                uiState = HomeUiState.Error(e.message ?: "Network error")
+            } catch (e: Exception) {
+                uiState = HomeUiState.Error(e.message ?: "Something went wrong")
+            }
+        }
+    }
+
+    fun runNowForCurrentSlot() {
+        if (isEveningSlot()) runEveningNow() else runNow()
+    }
+
     // Dismissal updates the cached briefing's dismissedActionIds and re-renders
     // the chip as gone. Persisted via repo.saveDismissal so the dismissal
     // survives process death until the next runAgent() writes a fresh briefing.
     fun dismissAction(action: ProposedAction) {
-        val current = (uiState as? HomeUiState.Success)?.briefing ?: return
+        val current = displayedBriefing ?: return
         val key = action.stableKey()
         if (key in current.dismissedActionIds) return
-        uiState = HomeUiState.Success(
-            current.copy(dismissedActionIds = current.dismissedActionIds + key)
-        )
+        val updated = current.copy(dismissedActionIds = current.dismissedActionIds + key)
+        if (current.kind == BriefingKind.EVENING) {
+            cachedEvening = updated
+        } else {
+            uiState = HomeUiState.Success(updated)
+        }
         repo.saveDismissal(key)
     }
 
@@ -197,12 +270,14 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     // pre-filter. Snackbar reports success / failure; on failure the previous
     // Success state is restored so the chip remains visible for retry.
     fun applyAction(action: ProposedAction) {
-        val prevState = uiState as? HomeUiState.Success ?: return
-        val taskIds = prevState.briefing.tasks.mapTo(mutableSetOf()) { it.id }
+        val current = displayedBriefing ?: return
+        val taskIds = current.tasks.mapTo(mutableSetOf()) { it.id }
         if (action.taskId !in taskIds) {
             snackbarMessage = "That task isn't in the current briefing — refresh and try again."
             return
         }
+        val prevUiState = uiState
+        val prevEvening = cachedEvening
         uiState = HomeUiState.Loading()
         viewModelScope.launch {
             try {
@@ -212,13 +287,12 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                     is ProposedAction.Reschedule     -> mutator.reschedule(action.taskId, action.newDate)
                     is ProposedAction.ChangePriority -> mutator.changePriority(action.taskId, action.newPriority)
                 }
-                // Persist the dismissal so the chip doesn't pop back if runNow
-                // races slower than the model re-suggesting the same thing.
                 repo.saveDismissal(action.stableKey())
                 snackbarMessage = "Applied"
-                runNow()
+                if (current.kind == BriefingKind.EVENING) runEveningNow() else runNow()
             } catch (e: Exception) {
-                uiState = prevState
+                uiState = prevUiState
+                cachedEvening = prevEvening
                 snackbarMessage = e.message ?: "Couldn't apply that action"
             }
         }
