@@ -16,12 +16,13 @@ import com.luna.morningagent.ui.home.HomeScreen
 import com.luna.morningagent.ui.launch.LaunchScreen
 import com.luna.morningagent.ui.settings.SettingsScreen
 import com.luna.morningagent.ui.sharedposts.SavedPostsScreen
+import com.luna.morningagent.ui.tempplan.TempPlanScreen
 import com.luna.morningagent.ui.theme.MorningAgentTheme
 import com.luna.morningagent.ui.theme.resolveTheme
 import java.time.LocalDateTime
 import kotlinx.coroutines.delay
 
-private enum class Screen { Launch, Home, Settings, SavedPosts }
+private enum class Screen { Launch, Home, Settings, SavedPosts, TempPlan }
 
 @Composable
 fun MorningAgentApp(notificationTick: Int = 0) {
@@ -67,9 +68,11 @@ fun MorningAgentApp(notificationTick: Int = 0) {
                 Screen.Home       -> HomeScreen(
                     onNavigateToSettings   = { screen = Screen.Settings },
                     onNavigateToSavedPosts = { screen = Screen.SavedPosts },
+                    onNavigateToTempPlan   = { screen = Screen.TempPlan },
                 )
                 Screen.Settings   -> SettingsScreen(onBack = { screen = Screen.Home })
                 Screen.SavedPosts -> SavedPostsScreen(onBack = { screen = Screen.Home })
+                Screen.TempPlan   -> TempPlanScreen(onBack = { screen = Screen.Home })
             }
         }
     }

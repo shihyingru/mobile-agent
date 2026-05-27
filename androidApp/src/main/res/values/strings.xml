@@ -156,4 +156,14 @@
     <string name="temp_plan_promote">Promote</string>
     <string name="temp_plan_promoted">Synced</string>
     <string name="temp_plan_more_tasks">+%1$d more</string>
+    <string name="temp_plan_expired">Expired</string>
+    <string name="temp_plan_no_plan">No active plan</string>
+    <string name="temp_plan_create_button">Create Plan</string>
+    <string name="temp_plan_field_name">Plan name</string>
+    <string name="temp_plan_field_start">Start date</string>
+    <string name="temp_plan_field_end">End date</string>
+    <string name="temp_plan_add_task">+ Add task</string>
+    <string name="temp_plan_delete_button">Delete Plan</string>
+    <string name="temp_plan_task_placeholder">What needs doing?</string>
+    <string name="temp_plan_day_header">DAY %1$d</string>
 </resources>
