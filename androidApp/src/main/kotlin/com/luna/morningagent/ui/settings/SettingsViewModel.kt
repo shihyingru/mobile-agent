@@ -14,6 +14,7 @@ import com.luna.morningagent.data.secure.TokenStore
 import com.luna.morningagent.data.sharedposts.CategoryDefinition
 import com.luna.morningagent.data.sharedposts.SharedPostsRepository
 import com.luna.morningagent.worker.BriefingScheduler
+import com.luna.morningagent.worker.EveningScheduler
 import com.luna.morningagent.worker.MorningAgentWorker
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -42,6 +43,9 @@ data class SettingsUiState(
     val dailyBriefing: Boolean   = false,    // schedules WorkManager when on
     val briefingHour: Int        = 9,
     val briefingMinute: Int      = 0,
+    val dailyEvening: Boolean    = false,    // schedules evening wrap-up worker when on
+    val eveningHour: Int         = 19,
+    val eveningMinute: Int       = 0,
     val justSaved: Boolean       = false,
     val notionTest: NotionTestResult? = null,
     val categories: List<CategoryDefinition> = emptyList(),
@@ -78,6 +82,9 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             dailyBriefing    = store.getDailyBriefingEnabled(),
             briefingHour     = store.getDailyBriefingHour(),
             briefingMinute   = store.getDailyBriefingMinute(),
+            dailyEvening     = store.getDailyEveningEnabled(),
+            eveningHour      = store.getDailyEveningHour(),
+            eveningMinute    = store.getDailyEveningMinute(),
         )
         refreshCategories()
     }
@@ -161,6 +168,23 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         uiState = uiState.copy(briefingHour = hour, briefingMinute = minute)
         if (uiState.dailyBriefing) {
             BriefingScheduler.replace(getApplication<Application>().applicationContext)
+        }
+    }
+
+    // Same shape as setDailyBriefing — toggle + (re)enqueue or cancel.
+    fun setDailyEvening(enabled: Boolean) {
+        store.saveDailyEveningEnabled(enabled)
+        uiState = uiState.copy(dailyEvening = enabled)
+        val appContext = getApplication<Application>().applicationContext
+        if (enabled) EveningScheduler.replace(appContext)
+        else EveningScheduler.disable(appContext)
+    }
+
+    fun setEveningTime(hour: Int, minute: Int) {
+        store.saveDailyEveningTime(hour, minute)
+        uiState = uiState.copy(eveningHour = hour, eveningMinute = minute)
+        if (uiState.dailyEvening) {
+            EveningScheduler.replace(getApplication<Application>().applicationContext)
         }
     }
 
@@ -253,6 +277,9 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             dailyBriefing    = uiState.dailyBriefing,
             briefingHour     = uiState.briefingHour,
             briefingMinute   = uiState.briefingMinute,
+            dailyEvening     = uiState.dailyEvening,
+            eveningHour      = uiState.eveningHour,
+            eveningMinute    = uiState.eveningMinute,
             justSaved        = true,
         )
 

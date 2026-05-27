@@ -1,17 +1,26 @@
 package com.luna.morningagent.data.agent
 
+import com.luna.morningagent.data.model.Briefing
+import com.luna.morningagent.data.model.BriefingKind
 import com.luna.morningagent.data.model.ProposedAction
 import com.luna.morningagent.data.model.Task
 
-// Boundary for "given today's high-priority tasks, produce a morning briefing." The
-// active implementation today is GeminiBriefingClient (Koog → Google AI). Kept narrow
-// so the agent layer can be swapped (different LLM, different framework) without
-// touching the repository or the UI.
+// Boundary for "given today's task list, produce a briefing." The active
+// implementations today are GeminiBriefingClient and ClaudeBriefingClient (both
+// Koog-backed). Kept narrow so the agent layer can be swapped without touching
+// the repository or the UI.
 interface BriefingGenerator {
+    // `kind` picks the prompt: MORNING runs the focus-the-day prompt, EVENING
+    // runs the wrap-up / carry-over prompt. `morningContext` is consulted only
+    // for EVENING — the evening prompt diffs this morning's task list against
+    // the current Notion state to detect what shipped vs what slipped.
+    //
     // onAttempt fires before each attempt (current=1..total) so the UI can show
     // a "Retrying… (n/total)" hint when transient errors are being absorbed.
     suspend fun generate(
         tasks: List<Task>,
+        kind: BriefingKind = BriefingKind.MORNING,
+        morningContext: Briefing? = null,
         onAttempt: (current: Int, total: Int) -> Unit = { _, _ -> },
     ): BriefingDraft
 }

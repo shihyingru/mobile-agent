@@ -97,6 +97,8 @@ fun SettingsScreen(
         onAutoRunChange        = vm::setAutoRun,
         onDailyBriefingChange  = vm::setDailyBriefing,
         onBriefingTimeChange   = vm::setBriefingTime,
+        onDailyEveningChange   = vm::setDailyEvening,
+        onEveningTimeChange    = vm::setEveningTime,
         onSendTestNotification = vm::sendTestNotification,
         onTestNotion           = vm::testNotionConnection,
         onSave                 = vm::save,
@@ -128,6 +130,8 @@ private fun SettingsScreenContent(
     onCategoryUpdate: (oldName: String, newName: String, keywords: List<String>) -> Unit,
     onCategoryRemove: (name: String) -> Unit,
     modifier: Modifier = Modifier,
+    onDailyEveningChange: (Boolean) -> Unit = {},
+    onEveningTimeChange: (Int, Int) -> Unit = { _, _ -> },
 ) {
     val morning = MaterialTheme.morning
     val focusManager = LocalFocusManager.current
@@ -142,6 +146,7 @@ private fun SettingsScreenContent(
         uiState.databaseDraft != uiState.savedDatabaseId
 
     var showTimePicker by remember { mutableStateOf(false) }
+    var showEveningTimePicker by remember { mutableStateOf(false) }
 
     Box(
         modifier = modifier
@@ -334,6 +339,24 @@ private fun SettingsScreenContent(
                         sub     = stringResource(R.string.settings_behavior_briefing_time_sub),
                         value   = formatTime(uiState.briefingHour, uiState.briefingMinute),
                         onClick = { showTimePicker = true },
+                        isSub   = true,
+                    )
+                    BehaviorDivider()
+                }
+                BehaviorToggleRow(
+                    title    = stringResource(R.string.settings_daily_evening_label),
+                    sub      = stringResource(R.string.settings_behavior_daily_evening_sub),
+                    on       = uiState.dailyEvening,
+                    onToggle = onDailyEveningChange,
+                )
+                BehaviorDivider()
+                if (uiState.dailyEvening) {
+                    BehaviorValueRow(
+                        title   = stringResource(R.string.settings_evening_time_label),
+                        sub     = stringResource(R.string.settings_behavior_evening_time_sub),
+                        value   = formatTime(uiState.eveningHour, uiState.eveningMinute),
+                        onClick = { showEveningTimePicker = true },
+                        isSub   = true,
                     )
                     BehaviorDivider()
                 }
@@ -379,6 +402,18 @@ private fun SettingsScreenContent(
             onConfirm     = { hour, minute ->
                 onBriefingTimeChange(hour, minute)
                 showTimePicker = false
+            },
+        )
+    }
+
+    if (showEveningTimePicker) {
+        BriefingTimePickerDialog(
+            initialHour   = uiState.eveningHour,
+            initialMinute = uiState.eveningMinute,
+            onDismiss     = { showEveningTimePicker = false },
+            onConfirm     = { hour, minute ->
+                onEveningTimeChange(hour, minute)
+                showEveningTimePicker = false
             },
         )
     }
