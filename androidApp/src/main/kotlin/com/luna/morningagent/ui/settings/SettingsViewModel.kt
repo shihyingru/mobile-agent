@@ -46,6 +46,7 @@ data class SettingsUiState(
     val notionTest: NotionTestResult? = null,
     val categories: List<CategoryDefinition> = emptyList(),
     val postCountsByCategory: Map<String, Int> = emptyMap(),
+    val appLanguage: String = "en",
 )
 
 /** Hard limits enforced by both UI and prompt rule — keep them in sync. */
@@ -74,6 +75,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             notionSavedLast4 = store.getNotionToken()?.takeLast(4)?.takeIf { it.isNotEmpty() },
             savedDatabaseId  = savedDb,
             databaseDraft    = savedDb,
+            appLanguage      = store.getAppLanguage(),
             autoRun          = store.getAutoRun(),
             dailyBriefing    = store.getDailyBriefingEnabled(),
             briefingHour     = store.getDailyBriefingHour(),
@@ -139,6 +141,11 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     // Auto-run is a UX preference, not a credential — persist on toggle so users
     // don't have to remember to tap Save after flipping it.
+    fun setAppLanguage(code: String) {
+        store.saveAppLanguage(code)
+        uiState = uiState.copy(appLanguage = code)
+    }
+
     fun setAutoRun(enabled: Boolean) {
         store.saveAutoRun(enabled)
         uiState = uiState.copy(autoRun = enabled)

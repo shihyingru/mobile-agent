@@ -178,6 +178,9 @@ class TokenStore(context: Context) {
     fun saveSharedPostsCacheJson(json: String) = writeString(KEY_SHARED_POSTS_CACHE, json)
     fun getSharedPostsCacheJson(): String? = readString(KEY_SHARED_POSTS_CACHE)
 
+    fun saveAppLanguage(code: String) = writeString(KEY_APP_LANGUAGE, code)
+    fun getAppLanguage(): String = readString(KEY_APP_LANGUAGE) ?: DEFAULT_LANGUAGE
+
     companion object {
         private const val KEY_GEMINI               = "gemini_api_key"
         private const val KEY_NOTION               = "notion_token"
@@ -194,10 +197,12 @@ class TokenStore(context: Context) {
         private const val KEY_SHARED_POSTS_DB_ID   = "shared_posts_db_id"
         private const val KEY_SHARED_POSTS_TAXONOMY = "shared_posts_taxonomy"
         private const val KEY_SHARED_POSTS_CACHE   = "shared_posts_cache_json"
+        private const val KEY_APP_LANGUAGE         = "app_language"
 
         private const val DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
         private const val DEFAULT_CLAUDE_MODEL = "claude-sonnet-4-6"
         private const val DEFAULT_PROVIDER     = "gemini"
+        private const val DEFAULT_LANGUAGE     = "en"
         private const val DEFAULT_HOUR         = 9
         private const val DEFAULT_MINUTE       = 0
         private val DEFAULT_CATEGORIES         = listOf(CategoryDefinition(name = "Misc"))
@@ -208,6 +213,7 @@ class TokenStore(context: Context) {
             KEY_GEMINI_MODEL, KEY_CLAUDE, KEY_CLAUDE_MODEL,
             KEY_PROVIDER, KEY_LAST_BRIEFING,
             KEY_SHARED_POSTS_DB_ID, KEY_SHARED_POSTS_TAXONOMY, KEY_SHARED_POSTS_CACHE,
+            KEY_APP_LANGUAGE,
         )
         private val BOOLEAN_KEYS = listOf(KEY_AUTO_RUN, KEY_DAILY_BRIEFING)
         private val INT_KEYS     = listOf(KEY_BRIEFING_HOUR, KEY_BRIEFING_MINUTE)

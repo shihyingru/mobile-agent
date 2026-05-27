@@ -18,7 +18,9 @@ import com.luna.morningagent.data.model.ProposedAction
 import com.luna.morningagent.data.notion.NotionRestClient
 import com.luna.morningagent.data.notion.NotionRestMutator
 import com.luna.morningagent.data.notion.NotionTaskMutator
+import com.luna.morningagent.R
 import com.luna.morningagent.data.secure.TokenStore
+import com.luna.morningagent.ui.common.SnackbarEvent
 import com.luna.morningagent.data.sharedposts.SharedPostsRepository
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -99,11 +101,11 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     // by HomeScreen's SnackbarHost via a LaunchedEffect. The screen calls
     // snackbarShown() once the message is displayed so a repeat of the same
     // message can fire again.
-    var snackbarMessage: String? by mutableStateOf(null)
+    var snackbarEvent: SnackbarEvent? by mutableStateOf(null)
         private set
 
     fun snackbarShown() {
-        snackbarMessage = null
+        snackbarEvent = null
     }
 
     init {
@@ -200,7 +202,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         val prevState = uiState as? HomeUiState.Success ?: return
         val taskIds = prevState.briefing.tasks.mapTo(mutableSetOf()) { it.id }
         if (action.taskId !in taskIds) {
-            snackbarMessage = "That task isn't in the current briefing — refresh and try again."
+            snackbarEvent = SnackbarEvent.ResId(R.string.snackbar_task_not_in_briefing)
             return
         }
         uiState = HomeUiState.Loading()
@@ -215,11 +217,12 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                 // Persist the dismissal so the chip doesn't pop back if runNow
                 // races slower than the model re-suggesting the same thing.
                 repo.saveDismissal(action.stableKey())
-                snackbarMessage = "Applied"
+                snackbarEvent = SnackbarEvent.ResId(R.string.snackbar_applied)
                 runNow()
             } catch (e: Exception) {
                 uiState = prevState
-                snackbarMessage = e.message ?: "Couldn't apply that action"
+                snackbarEvent = if (e.message != null) SnackbarEvent.Plain(e.message!!)
+                    else SnackbarEvent.ResId(R.string.snackbar_apply_failed)
             }
         }
     }
