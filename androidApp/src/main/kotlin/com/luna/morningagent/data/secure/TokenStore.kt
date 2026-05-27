@@ -44,7 +44,7 @@ class TokenStore(context: Context) {
     private val crypto     = TinkCrypto(appContext)
     private val dataStore  = appContext.tokenDataStore
     private val scope      = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val cache      = ConcurrentHashMap<String, Any>()
+    private val cache      = sharedCache
 
     init {
         runBlocking {
@@ -182,6 +182,8 @@ class TokenStore(context: Context) {
     fun getTempPlansCacheJson(): String? = readString(KEY_TEMP_PLANS_CACHE)
 
     companion object {
+        private val sharedCache = ConcurrentHashMap<String, Any>()
+
         private const val KEY_GEMINI               = "gemini_api_key"
         private const val KEY_NOTION               = "notion_token"
         private const val KEY_NOTION_DB            = "notion_database_id"
