@@ -59,6 +59,7 @@ import com.luna.morningagent.ui.home.components.BriefingActions
 import com.luna.morningagent.ui.home.components.BriefingBlock
 import com.luna.morningagent.ui.home.components.StatusRow
 import com.luna.morningagent.ui.home.components.TaskCard
+import com.luna.morningagent.ui.home.components.TempPlanEmptyCard
 import com.luna.morningagent.ui.home.components.TempPlanSection
 import com.luna.morningagent.ui.theme.MorningAgentTheme
 import com.luna.morningagent.ui.theme.MorningType
@@ -228,14 +229,19 @@ private fun HomeScreenContent(
                 }
             }
 
-            if (activeTempPlan != null) {
-                item {
+            item {
+                if (activeTempPlan != null) {
                     TempPlanSection(
                         plan          = activeTempPlan,
                         onToggleTask  = onToggleTempTask,
                         onPromoteTask = onPromoteTempTask,
                         onClick       = onNavigateToTempPlan,
                         modifier      = Modifier.padding(horizontal = 4.dp),
+                    )
+                } else {
+                    TempPlanEmptyCard(
+                        onClick  = onNavigateToTempPlan,
+                        modifier = Modifier.padding(horizontal = 4.dp),
                     )
                 }
             }

@@ -158,6 +158,8 @@
     <string name="temp_plan_more_tasks">+%1$d more</string>
     <string name="temp_plan_expired">Expired</string>
     <string name="temp_plan_no_plan">No active plan</string>
+    <string name="temp_plan_empty_hint">A short-lived task list for trips, events, or deadlines — auto-archives when the period ends.</string>
+    <string name="temp_plan_empty_cta">+ New plan</string>
     <string name="temp_plan_create_button">Create Plan</string>
     <string name="temp_plan_field_name">Plan name</string>
     <string name="temp_plan_field_start">Start date</string>
