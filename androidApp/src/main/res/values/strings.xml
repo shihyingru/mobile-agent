@@ -131,6 +131,13 @@
     <string name="settings_behavior_daily_briefing_sub">Push the briefing when it\'s ready.</string>
     <string name="settings_behavior_briefing_time_sub">Wakes the agent and delivers the briefing.</string>
 
+    <!-- Evening reflection -->
+    <string name="settings_daily_evening_label">Evening reflection</string>
+    <string name="settings_evening_time_label">Evening time</string>
+    <string name="settings_behavior_daily_evening_sub">Wrap up today and confirm tomorrow.</string>
+    <string name="settings_behavior_evening_time_sub">When the wrap-up fires.</string>
+    <string name="notification_title_evening">Today\'s wrap-up — %1$d carry-over(s)</string>
+
     <!-- Saved post categories (Settings → category management) -->
     <string name="settings_section_saved_posts">SAVED POST CATEGORIES</string>
     <string name="settings_saved_posts_count">Categories (%1$d)</string>

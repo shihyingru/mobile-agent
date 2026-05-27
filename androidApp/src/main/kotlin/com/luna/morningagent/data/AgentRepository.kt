@@ -3,6 +3,7 @@ package com.luna.morningagent.data
 import com.luna.morningagent.data.agent.BriefingGenerator
 import com.luna.morningagent.data.agent.GeminiKeyMissingException
 import com.luna.morningagent.data.model.Briefing
+import com.luna.morningagent.data.model.BriefingKind
 import com.luna.morningagent.data.notion.NotionConfigMissingException
 import com.luna.morningagent.data.notion.NotionTaskSource
 import com.luna.morningagent.data.secure.TokenStore
@@ -21,8 +22,15 @@ class AgentRepository(
 ) {
     // Throws AgentConfigMissingException when keys aren't set, AgentNetworkException
     // for transport failures, IllegalStateException for parse / unexpected errors.
-    // Callers (HomeViewModel) translate these to UI states.
-    suspend fun runAgent(onAttempt: (Int, Int) -> Unit = { _, _ -> }): Briefing {
+    // Callers (HomeViewModel, workers) translate these to UI states.
+    //
+    // `kind` picks morning briefing vs evening reflection: prompt, persistence
+    // cache key, and the morning-context lookup all branch on it. Default is
+    // MORNING so existing call sites stay one-arg.
+    suspend fun runAgent(
+        kind: BriefingKind = BriefingKind.MORNING,
+        onAttempt: (Int, Int) -> Unit = { _, _ -> },
+    ): Briefing {
         val tasks = try {
             notionTaskSource.fetchTodayTasks()
         } catch (e: NotionConfigMissingException) {
@@ -31,8 +39,12 @@ class AgentRepository(
             throw AgentNetworkException("Couldn't reach Notion. ${e.message ?: ""}".trim(), e)
         }
 
+        // Evening reflection diffs the morning's list to detect what shipped.
+        // Null is fine — the reflection prompt handles "no morning context."
+        val morningContext = if (kind == BriefingKind.EVENING) getLastBriefing() else null
+
         val draft = try {
-            briefingGenerator.generate(tasks, onAttempt)
+            briefingGenerator.generate(tasks, kind, morningContext, onAttempt)
         } catch (e: GeminiKeyMissingException) {
             throw AgentConfigMissingException(e.message ?: "Gemini not configured", e)
         } catch (e: Exception) {
@@ -57,15 +69,30 @@ class AgentRepository(
             model       = draft.model,
             tokens      = draft.tokens,
             actions     = validatedActions,
+            kind        = kind,
         )
 
-        // Persist so a cold app launch can show the morning's briefing without
-        // re-hitting the network. Failures here shouldn't sink the result.
+        // Persist to the per-kind cache so a cold launch shows the freshest one
+        // without re-hitting the network. Failures here shouldn't sink the result.
         tokenStore?.let { store ->
-            runCatching { store.saveLastBriefingJson(briefingJson.encodeToString(Briefing.serializer(), briefing)) }
+            val json = briefingJson.encodeToString(Briefing.serializer(), briefing)
+            runCatching {
+                when (kind) {
+                    BriefingKind.MORNING -> store.saveLastBriefingJson(json)
+                    BriefingKind.EVENING -> store.saveLastReflectionJson(json)
+                }
+            }
         }
 
         return briefing
+    }
+
+    // Reads the most recent evening reflection written by runAgent(EVENING) or
+    // the evening worker. Returns null on first run or after a parse failure.
+    fun getLastReflection(): Briefing? {
+        val store = tokenStore ?: return null
+        val json = store.getLastReflectionJson() ?: return null
+        return runCatching { briefingJson.decodeFromString(Briefing.serializer(), json) }.getOrNull()
     }
 
     // Reads the most recent briefing written by runAgent() or the WorkManager job.
