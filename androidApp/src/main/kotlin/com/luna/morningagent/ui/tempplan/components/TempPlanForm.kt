@@ -142,24 +142,34 @@ private fun DateField(
 ) {
     var showDialog by remember { mutableStateOf(false) }
     val morning = MaterialTheme.morning
+    val displayValue = if (value.isNotEmpty()) {
+        runCatching {
+            LocalDate.parse(value).format(
+                java.time.format.DateTimeFormatter.ofPattern("MMM d, yyyy", java.util.Locale.ENGLISH)
+            )
+        }.getOrDefault(value)
+    } else {
+        ""
+    }
 
-    OutlinedTextField(
-        value         = value,
-        onValueChange = {},
-        label         = { Text(label) },
-        readOnly      = true,
-        singleLine    = true,
-        modifier      = modifier.clickable { showDialog = true },
-        enabled       = false,
-    )
-
-    // Workaround: disabled OutlinedTextField doesn't receive clicks.
-    // Overlay a clickable box.
-    if (!showDialog) {
-        androidx.compose.foundation.layout.Box(
-            modifier = modifier
-                .height(56.dp)
-                .clickable { showDialog = true },
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .border(1.dp, morning.cardEdge, RoundedCornerShape(12.dp))
+            .clickable { showDialog = true }
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+    ) {
+        Text(
+            text  = label,
+            style = MorningType.Caption,
+            color = morning.textMuted,
+        )
+        Spacer(Modifier.height(2.dp))
+        Text(
+            text     = displayValue.ifEmpty { "—" },
+            style    = MorningType.BodyReadItalic,
+            color    = if (displayValue.isEmpty()) morning.textMuted else morning.textPrimary,
+            maxLines = 1,
         )
     }
 

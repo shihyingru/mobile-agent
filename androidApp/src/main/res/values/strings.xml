@@ -162,8 +162,8 @@
     <string name="temp_plan_empty_cta">+ New plan</string>
     <string name="temp_plan_create_button">Create Plan</string>
     <string name="temp_plan_field_name">Plan name</string>
-    <string name="temp_plan_field_start">Start date</string>
-    <string name="temp_plan_field_end">End date</string>
+    <string name="temp_plan_field_start">Start</string>
+    <string name="temp_plan_field_end">End</string>
     <string name="temp_plan_add_task">+ Add task</string>
     <string name="temp_plan_delete_button">Delete Plan</string>
     <string name="temp_plan_task_placeholder">What needs doing?</string>
