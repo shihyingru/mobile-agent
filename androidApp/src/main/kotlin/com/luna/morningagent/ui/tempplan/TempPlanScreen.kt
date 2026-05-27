@@ -89,14 +89,16 @@ fun TempPlanScreen(
                 }
                 is TempPlanUiState.Viewing -> item {
                     TempPlanDetail(
-                        plan         = state.plan,
-                        taskDraft    = vm.taskDraft,
+                        plan              = state.plan,
+                        taskDraft         = vm.taskDraft,
                         onTaskDraftChange = { vm.taskDraft = it },
-                        onAddTask    = { vm.addTask() },
-                        onToggleTask = vm::toggleTask,
-                        onRemoveTask = vm::removeTask,
-                        onPromoteTask = vm::promoteTask,
-                        onDeletePlan = vm::deletePlan,
+                        onAddTask         = { vm.addTask() },
+                        onToggleTask      = vm::toggleTask,
+                        onRemoveTask      = vm::removeTask,
+                        onPromoteTask     = vm::promoteTask,
+                        onUpdateStartDate = vm::updatePlanStartDate,
+                        onUpdateEndDate   = vm::updatePlanEndDate,
+                        onDeletePlan      = vm::deletePlan,
                     )
                 }
             }

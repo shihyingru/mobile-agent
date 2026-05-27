@@ -101,6 +101,18 @@ class TempPlanViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    fun updatePlanStartDate(date: String) {
+        val plan = (uiState as? TempPlanUiState.Viewing)?.plan ?: return
+        repo.updatePlanDates(plan.id, startDate = date, endDate = plan.endDate)
+        refresh()
+    }
+
+    fun updatePlanEndDate(date: String) {
+        val plan = (uiState as? TempPlanUiState.Viewing)?.plan ?: return
+        repo.updatePlanDates(plan.id, startDate = plan.startDate, endDate = date)
+        refresh()
+    }
+
     fun deletePlan() {
         val plan = (uiState as? TempPlanUiState.Viewing)?.plan ?: return
         repo.deletePlan(plan.id)
