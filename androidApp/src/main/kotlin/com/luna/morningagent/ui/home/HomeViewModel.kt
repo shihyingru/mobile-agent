@@ -20,6 +20,8 @@ import com.luna.morningagent.data.notion.NotionRestMutator
 import com.luna.morningagent.data.notion.NotionTaskMutator
 import com.luna.morningagent.data.secure.TokenStore
 import com.luna.morningagent.data.sharedposts.SharedPostsRepository
+import com.luna.morningagent.data.tempplan.TempPlan
+import com.luna.morningagent.data.tempplan.TempPlanRepository
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -95,6 +97,11 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     var sharedPostsDbConfigured: Boolean by mutableStateOf(tokenStore.getSharedPostsDbId() != null)
         private set
 
+    private val tempPlanRepo = TempPlanRepository(tokenStore)
+
+    var activeTempPlan: TempPlan? by mutableStateOf(null)
+        private set
+
     // Transient snackbar message — set by applyAction/dismissAction, consumed
     // by HomeScreen's SnackbarHost via a LaunchedEffect. The screen calls
     // snackbarShown() once the message is displayed so a repeat of the same
@@ -119,6 +126,9 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
         // Auto-run on first composition only when the user has opted in AND keys
         // are configured AND the cache is stale (older than today, or absent).
+        tempPlanRepo.archiveExpiredPlans()
+        activeTempPlan = tempPlanRepo.getActivePlan()
+
         if (!cachedIsFromToday && tokenStore.getAutoRun() && hasMinimalConfig()) {
             runNow()
         }
@@ -142,6 +152,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         nextRunLabel            = computeNextRunLabel(now)
         pendingSharedPostsCount = sharedPostsRepo.listAll().count { it.pendingSync }
         sharedPostsDbConfigured = tokenStore.getSharedPostsDbId() != null
+        activeTempPlan          = tempPlanRepo.getActivePlan()
     }
 
     private fun startClockTicker() {
@@ -220,6 +231,25 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             } catch (e: Exception) {
                 uiState = prevState
                 snackbarMessage = e.message ?: "Couldn't apply that action"
+            }
+        }
+    }
+
+    fun toggleTempTask(taskId: String) {
+        val plan = activeTempPlan ?: return
+        tempPlanRepo.toggleTask(plan.id, taskId)
+        activeTempPlan = tempPlanRepo.getActivePlan()
+    }
+
+    fun promoteTempTask(taskId: String) {
+        val plan = activeTempPlan ?: return
+        viewModelScope.launch {
+            try {
+                tempPlanRepo.promoteTask(plan.id, taskId)
+                activeTempPlan = tempPlanRepo.getActivePlan()
+                snackbarMessage = "Promoted to Notion"
+            } catch (e: Exception) {
+                snackbarMessage = e.message ?: "Couldn't promote task"
             }
         }
     }

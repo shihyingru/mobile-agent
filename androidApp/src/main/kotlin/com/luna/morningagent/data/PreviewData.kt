@@ -4,6 +4,8 @@ import com.luna.morningagent.data.model.Briefing
 import com.luna.morningagent.data.model.Priority
 import com.luna.morningagent.data.model.ProposedAction
 import com.luna.morningagent.data.model.Task
+import com.luna.morningagent.data.tempplan.TempPlan
+import com.luna.morningagent.data.tempplan.TempTask
 import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
 
@@ -58,6 +60,21 @@ object PreviewData {
                 notionRef        = "NOT-1044",
                 area             = "Design",
             ),
+        ),
+    )
+
+    val sampleTempPlan = TempPlan(
+        id        = "plan-1",
+        name      = "Tokyo 5D4N",
+        startDate = "2026-06-01",
+        endDate   = "2026-06-05",
+        createdAt = Clock.System.now(),
+        tasks     = listOf(
+            TempTask(id = "t1", title = "Book Shinkansen tickets", checked = true),
+            TempTask(id = "t2", title = "Reserve TeamLab Borderless", checked = true, promotedToNotionId = "abc"),
+            TempTask(id = "t3", title = "Pack portable charger", dayIndex = 1),
+            TempTask(id = "t4", title = "Confirm Airbnb check-in", dayIndex = 1),
+            TempTask(id = "t5", title = "Exchange JPY at airport", dayIndex = 1),
         ),
     )
 }

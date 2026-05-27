@@ -54,10 +54,12 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.luna.morningagent.R
 import com.luna.morningagent.data.PreviewData
 import com.luna.morningagent.data.model.ProposedAction
+import com.luna.morningagent.data.tempplan.TempPlan
 import com.luna.morningagent.ui.home.components.BriefingActions
 import com.luna.morningagent.ui.home.components.BriefingBlock
 import com.luna.morningagent.ui.home.components.StatusRow
 import com.luna.morningagent.ui.home.components.TaskCard
+import com.luna.morningagent.ui.home.components.TempPlanSection
 import com.luna.morningagent.ui.theme.MorningAgentTheme
 import com.luna.morningagent.ui.theme.MorningType
 import com.luna.morningagent.ui.theme.morning
@@ -67,6 +69,7 @@ import com.luna.morningagent.ui.theme.slotCopy
 fun HomeScreen(
     onNavigateToSettings: () -> Unit,
     onNavigateToSavedPosts: () -> Unit,
+    onNavigateToTempPlan: () -> Unit = {},
     modifier: Modifier = Modifier,
     vm: HomeViewModel = viewModel(),
 ) {
@@ -83,18 +86,22 @@ fun HomeScreen(
     }
 
     HomeScreenContent(
-        uiState                = vm.uiState,
-        nextRunLabel           = vm.nextRunLabel,
-        headerDateLine         = vm.headerDateLine,
-        pendingSharedPosts     = vm.pendingSharedPostsCount,
+        uiState                 = vm.uiState,
+        nextRunLabel            = vm.nextRunLabel,
+        headerDateLine          = vm.headerDateLine,
+        pendingSharedPosts      = vm.pendingSharedPostsCount,
         sharedPostsDbConfigured = vm.sharedPostsDbConfigured,
-        snackbarHostState      = snackbarHostState,
-        onRunNow               = vm::runNow,
-        onApplyAction          = vm::applyAction,
-        onDismissAction        = vm::dismissAction,
-        onNavigateToSettings   = onNavigateToSettings,
-        onNavigateToSavedPosts = onNavigateToSavedPosts,
-        modifier               = modifier,
+        activeTempPlan          = vm.activeTempPlan,
+        snackbarHostState       = snackbarHostState,
+        onRunNow                = vm::runNow,
+        onApplyAction           = vm::applyAction,
+        onDismissAction         = vm::dismissAction,
+        onToggleTempTask        = vm::toggleTempTask,
+        onPromoteTempTask       = vm::promoteTempTask,
+        onNavigateToSettings    = onNavigateToSettings,
+        onNavigateToSavedPosts  = onNavigateToSavedPosts,
+        onNavigateToTempPlan    = onNavigateToTempPlan,
+        modifier                = modifier,
     )
 }
 
@@ -105,13 +112,17 @@ private fun HomeScreenContent(
     headerDateLine: String,
     pendingSharedPosts: Int,
     sharedPostsDbConfigured: Boolean,
+    activeTempPlan: TempPlan?,
     onRunNow: () -> Unit,
     onNavigateToSettings: () -> Unit,
     onNavigateToSavedPosts: () -> Unit,
+    onNavigateToTempPlan: () -> Unit,
     modifier: Modifier = Modifier,
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
     onApplyAction: (ProposedAction) -> Unit = {},
     onDismissAction: (ProposedAction) -> Unit = {},
+    onToggleTempTask: (String) -> Unit = {},
+    onPromoteTempTask: (String) -> Unit = {},
 ) {
     val morning = MaterialTheme.morning
     val context = LocalContext.current
@@ -214,6 +225,18 @@ private fun HomeScreenContent(
                             modifier = Modifier.padding(horizontal = 4.dp),
                         )
                     }
+                }
+            }
+
+            if (activeTempPlan != null) {
+                item {
+                    TempPlanSection(
+                        plan          = activeTempPlan,
+                        onToggleTask  = onToggleTempTask,
+                        onPromoteTask = onPromoteTempTask,
+                        onClick       = onNavigateToTempPlan,
+                        modifier      = Modifier.padding(horizontal = 4.dp),
+                    )
                 }
             }
 
@@ -472,14 +495,16 @@ private fun SkeletonCard() {
 private fun HomeSuccessPreview() {
     MorningAgentTheme {
         HomeScreenContent(
-            uiState              = HomeUiState.Success(PreviewData.sampleBriefing),
-            nextRunLabel         = "tomorrow, 9:00",
-            headerDateLine       = "FRIDAY · MAY 15 · 2:23 PM",
-            onRunNow             = {},
-            pendingSharedPosts     = 0,
+            uiState                 = HomeUiState.Success(PreviewData.sampleBriefing),
+            nextRunLabel            = "tomorrow, 9:00",
+            headerDateLine          = "FRIDAY · MAY 15 · 2:23 PM",
+            activeTempPlan          = PreviewData.sampleTempPlan,
+            onRunNow                = {},
+            pendingSharedPosts      = 0,
             sharedPostsDbConfigured = true,
-            onNavigateToSettings   = {},
-            onNavigateToSavedPosts = {},
+            onNavigateToSettings    = {},
+            onNavigateToSavedPosts  = {},
+            onNavigateToTempPlan    = {},
         )
     }
 }
@@ -489,14 +514,16 @@ private fun HomeSuccessPreview() {
 private fun HomeLoadingPreview() {
     MorningAgentTheme {
         HomeScreenContent(
-            uiState              = HomeUiState.Loading(),
-            nextRunLabel         = "tomorrow, 9:00",
-            headerDateLine       = "FRIDAY · MAY 15 · 2:23 PM",
-            onRunNow             = {},
-            pendingSharedPosts     = 0,
+            uiState                 = HomeUiState.Loading(),
+            nextRunLabel            = "tomorrow, 9:00",
+            headerDateLine          = "FRIDAY · MAY 15 · 2:23 PM",
+            activeTempPlan          = null,
+            onRunNow                = {},
+            pendingSharedPosts      = 0,
             sharedPostsDbConfigured = true,
-            onNavigateToSettings   = {},
-            onNavigateToSavedPosts = {},
+            onNavigateToSettings    = {},
+            onNavigateToSavedPosts  = {},
+            onNavigateToTempPlan    = {},
         )
     }
 }
@@ -506,14 +533,16 @@ private fun HomeLoadingPreview() {
 private fun HomeEmptyPreview() {
     MorningAgentTheme {
         HomeScreenContent(
-            uiState              = HomeUiState.Empty,
-            nextRunLabel         = "tomorrow, 9:00",
-            headerDateLine       = "FRIDAY · MAY 15 · 2:23 PM",
-            onRunNow             = {},
-            pendingSharedPosts     = 0,
+            uiState                 = HomeUiState.Empty,
+            nextRunLabel            = "tomorrow, 9:00",
+            headerDateLine          = "FRIDAY · MAY 15 · 2:23 PM",
+            activeTempPlan          = null,
+            onRunNow                = {},
+            pendingSharedPosts      = 0,
             sharedPostsDbConfigured = true,
-            onNavigateToSettings   = {},
-            onNavigateToSavedPosts = {},
+            onNavigateToSettings    = {},
+            onNavigateToSavedPosts  = {},
+            onNavigateToTempPlan    = {},
         )
     }
 }
@@ -523,14 +552,16 @@ private fun HomeEmptyPreview() {
 private fun HomeErrorPreview() {
     MorningAgentTheme {
         HomeScreenContent(
-            uiState              = HomeUiState.Error("Couldn't reach Notion. Check your token in Settings."),
-            nextRunLabel         = null,
-            headerDateLine       = "FRIDAY · MAY 15 · 2:23 PM",
-            onRunNow             = {},
-            pendingSharedPosts     = 0,
+            uiState                 = HomeUiState.Error("Couldn't reach Notion. Check your token in Settings."),
+            nextRunLabel            = null,
+            headerDateLine          = "FRIDAY · MAY 15 · 2:23 PM",
+            activeTempPlan          = null,
+            onRunNow                = {},
+            pendingSharedPosts      = 0,
             sharedPostsDbConfigured = true,
-            onNavigateToSettings   = {},
-            onNavigateToSavedPosts = {},
+            onNavigateToSettings    = {},
+            onNavigateToSavedPosts  = {},
+            onNavigateToTempPlan    = {},
         )
     }
 }
