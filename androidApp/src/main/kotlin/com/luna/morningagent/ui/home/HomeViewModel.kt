@@ -250,9 +250,10 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 tempPlanRepo.promoteTask(plan.id, taskId)
                 activeTempPlan = tempPlanRepo.getActivePlan()
-                snackbarMessage = "Promoted to Notion"
+                snackbarEvent = SnackbarEvent.ResId(R.string.snackbar_promoted)
             } catch (e: Exception) {
-                snackbarMessage = e.message ?: "Couldn't promote task"
+                snackbarEvent = if (e.message != null) SnackbarEvent.Plain(e.message!!)
+                    else SnackbarEvent.ResId(R.string.snackbar_promote_failed)
             }
         }
     }
