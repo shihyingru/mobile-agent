@@ -155,4 +155,12 @@
     <string name="settings_saved_posts_name_too_short">Name needs %1$d–%2$d characters</string>
     <string name="settings_saved_posts_seed_lock">Misc can\'t be deleted — it\'s the categorizer\'s fallback.</string>
     <string name="cd_remove_keyword">Remove keyword</string>
+
+    <!-- Temporary plan -->
+    <string name="section_plan">PLAN</string>
+    <string name="temp_plan_days_left">%1$d days left</string>
+    <string name="temp_plan_last_day">Last day</string>
+    <string name="temp_plan_promote">Promote</string>
+    <string name="temp_plan_promoted">Synced</string>
+    <string name="temp_plan_more_tasks">+%1$d more</string>
 </resources>
