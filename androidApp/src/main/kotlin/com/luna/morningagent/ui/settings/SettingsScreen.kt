@@ -51,6 +51,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
@@ -94,6 +95,7 @@ fun SettingsScreen(
         onClaudeDraftChange    = vm::updateClaudeDraft,
         onNotionDraftChange    = vm::updateNotionDraft,
         onDatabaseDraftChange  = vm::updateDatabaseDraft,
+        onLanguageChange       = vm::setAppLanguage,
         onAutoRunChange        = vm::setAutoRun,
         onDailyBriefingChange  = vm::setDailyBriefing,
         onBriefingTimeChange   = vm::setBriefingTime,
@@ -119,6 +121,7 @@ private fun SettingsScreenContent(
     onClaudeDraftChange: (String) -> Unit,
     onNotionDraftChange: (String) -> Unit,
     onDatabaseDraftChange: (String) -> Unit,
+    onLanguageChange: (String) -> Unit,
     onAutoRunChange: (Boolean) -> Unit,
     onDailyBriefingChange: (Boolean) -> Unit,
     onBriefingTimeChange: (Int, Int) -> Unit,
@@ -134,6 +137,7 @@ private fun SettingsScreenContent(
     onEveningTimeChange: (Int, Int) -> Unit = { _, _ -> },
 ) {
     val morning = MaterialTheme.morning
+    val context = LocalContext.current
     val focusManager = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
 
@@ -360,6 +364,17 @@ private fun SettingsScreenContent(
                     )
                     BehaviorDivider()
                 }
+                BehaviorValueRow(
+                    title   = stringResource(R.string.settings_language_label),
+                    sub     = stringResource(R.string.settings_language_sub),
+                    value   = if (uiState.appLanguage == "zh-TW") "繁體中文" else "English",
+                    onClick = {
+                        val next = if (uiState.appLanguage == "zh-TW") "en" else "zh-TW"
+                        onLanguageChange(next)
+                        (context as? android.app.Activity)?.recreate()
+                    },
+                )
+                BehaviorDivider()
             }
 
             // Send test notification (only when daily briefing is on, mirrors the
@@ -700,6 +715,7 @@ private fun SettingsEmptyPreview() {
             onClaudeDraftChange    = {},
             onNotionDraftChange    = {},
             onDatabaseDraftChange  = {},
+            onLanguageChange       = {},
             onAutoRunChange        = {},
             onDailyBriefingChange  = {},
             onBriefingTimeChange   = { _, _ -> },
@@ -735,6 +751,7 @@ private fun SettingsSavedPreview() {
             onClaudeDraftChange    = {},
             onNotionDraftChange    = {},
             onDatabaseDraftChange  = {},
+            onLanguageChange       = {},
             onAutoRunChange        = {},
             onDailyBriefingChange  = {},
             onBriefingTimeChange   = { _, _ -> },

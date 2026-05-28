@@ -194,6 +194,9 @@ class TokenStore(context: Context) {
     fun saveTempPlansCacheJson(json: String) = writeString(KEY_TEMP_PLANS_CACHE, json)
     fun getTempPlansCacheJson(): String? = readString(KEY_TEMP_PLANS_CACHE)
 
+    fun saveAppLanguage(code: String) = writeString(KEY_APP_LANGUAGE, code)
+    fun getAppLanguage(): String = readString(KEY_APP_LANGUAGE) ?: DEFAULT_LANGUAGE
+
     companion object {
         private const val KEY_GEMINI               = "gemini_api_key"
         private const val KEY_NOTION               = "notion_token"
@@ -215,10 +218,12 @@ class TokenStore(context: Context) {
         private const val KEY_EVENING_HOUR         = "daily_evening_hour"
         private const val KEY_EVENING_MINUTE       = "daily_evening_minute"
         private const val KEY_LAST_REFLECTION      = "last_reflection_json"
+        private const val KEY_APP_LANGUAGE         = "app_language"
 
         private const val DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
         private const val DEFAULT_CLAUDE_MODEL = "claude-sonnet-4-6"
         private const val DEFAULT_PROVIDER     = "gemini"
+        private const val DEFAULT_LANGUAGE     = "en"
         private const val DEFAULT_HOUR         = 9
         private const val DEFAULT_MINUTE       = 0
         private const val DEFAULT_EVENING_HOUR = 19
@@ -232,6 +237,7 @@ class TokenStore(context: Context) {
             KEY_PROVIDER, KEY_LAST_BRIEFING, KEY_LAST_REFLECTION,
             KEY_SHARED_POSTS_DB_ID, KEY_SHARED_POSTS_TAXONOMY, KEY_SHARED_POSTS_CACHE,
             KEY_TEMP_PLANS_CACHE,
+            KEY_APP_LANGUAGE,
         )
         private val BOOLEAN_KEYS = listOf(KEY_AUTO_RUN, KEY_DAILY_BRIEFING, KEY_DAILY_EVENING)
         private val INT_KEYS     = listOf(

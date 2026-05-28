@@ -55,6 +55,7 @@ import com.luna.morningagent.R
 import com.luna.morningagent.data.PreviewData
 import com.luna.morningagent.data.model.ProposedAction
 import com.luna.morningagent.data.tempplan.TempPlan
+import com.luna.morningagent.ui.common.SnackbarEvent
 import com.luna.morningagent.ui.home.components.BriefingActions
 import com.luna.morningagent.ui.home.components.BriefingBlock
 import com.luna.morningagent.ui.home.components.StatusRow
@@ -78,8 +79,15 @@ fun HomeScreen(
     LaunchedEffect(Unit) { vm.refreshClock() }
 
     val snackbarHostState = remember { SnackbarHostState() }
-    LaunchedEffect(vm.snackbarMessage) {
-        vm.snackbarMessage?.let { msg ->
+    val snackbarEvent = vm.snackbarEvent
+    val resolvedSnackbar = when (snackbarEvent) {
+        is SnackbarEvent.ResId -> stringResource(snackbarEvent.id)
+        is SnackbarEvent.ResIdWithArgs -> stringResource(snackbarEvent.id, *snackbarEvent.args.toTypedArray())
+        is SnackbarEvent.Plain -> snackbarEvent.message
+        null -> null
+    }
+    LaunchedEffect(snackbarEvent) {
+        resolvedSnackbar?.let { msg ->
             snackbarHostState.showSnackbar(msg)
             vm.snackbarShown()
         }

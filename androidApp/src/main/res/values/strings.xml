@@ -68,6 +68,19 @@
     <string name="settings_button_test_notification">Send test notification</string>
     <string name="cd_back">Back</string>
 
+    <!-- Language -->
+    <string name="settings_language_label">Language</string>
+    <string name="settings_language_sub">Choose the app\'s display language.</string>
+
+    <!-- Snackbar messages (extracted from ViewModels) -->
+    <string name="snackbar_applied">Applied</string>
+    <string name="snackbar_apply_failed">Couldn\'t apply that action</string>
+    <string name="snackbar_task_not_in_briefing">That task isn\'t in the current briefing — refresh and try again.</string>
+    <string name="snackbar_promoted">Promoted to Notion</string>
+    <string name="snackbar_promote_failed">Couldn\'t promote task</string>
+    <string name="dialog_ok">OK</string>
+    <string name="dialog_cancel">Cancel</string>
+
     <!-- v4 — per-slot copy. 5 slots × 5 fields. Mirrors design/themes.jsx SLOTS verbatim. -->
 
     <!-- Dawn (05:00–08:59) -->

@@ -1,6 +1,7 @@
 package com.luna.morningagent
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
@@ -28,6 +29,11 @@ class MainActivity : ComponentActivity() {
     // MorningAgentApp to (a) skip the Launch screen on cold start, and (b) snap
     // back to Home if the user was on Settings when the notification fired.
     private var notificationTick by mutableIntStateOf(0)
+
+    override fun attachBaseContext(newBase: Context) {
+        val store = TokenStore(newBase)
+        super.attachBaseContext(LocaleHelper.applyLocale(newBase, store.getAppLanguage()))
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         // System splash hands off cleanly to LaunchScreen — no white flash
