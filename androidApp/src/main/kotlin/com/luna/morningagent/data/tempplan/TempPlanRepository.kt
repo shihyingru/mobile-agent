@@ -34,6 +34,10 @@ class TempPlanRepository(
         return plan
     }
 
+    fun updatePlanDates(planId: String, startDate: String, endDate: String) {
+        updatePlan(planId) { it.copy(startDate = startDate, endDate = endDate) }
+    }
+
     fun deletePlan(planId: String) {
         writeCache(readCache().filter { it.id != planId })
     }
