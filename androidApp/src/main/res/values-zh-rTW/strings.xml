@@ -1,0 +1,164 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Morning Agent</string>
+    <string name="tagline">你的一天，準備好了。</string>
+    <string name="greeting_morning">早安，Luna</string>
+    <string name="greeting_afternoon">午安，Luna</string>
+    <string name="greeting_evening">晚上好，Luna</string>
+    <string name="greeting_weekend">放鬆的一天，Luna</string>
+    <string name="agent_status_label">助理狀態</string>
+    <string name="agent_status_active">執行中</string>
+    <string name="agent_status_ready">就緒</string>
+    <string name="agent_status_resting">休息中</string>
+    <string name="agent_status_paused">已暫停</string>
+    <string name="agent_status_next_run">下次執行</string>
+    <string name="btn_run_now">立即執行</string>
+    <string name="btn_start_the_day">開始新的一天</string>
+    <string name="btn_refresh_briefing">重新整理簡報</string>
+    <string name="btn_plan_next_week">規劃下週</string>
+    <string name="section_todays_briefing">今日簡報</string>
+    <string name="section_your_briefing">你的簡報</string>
+    <string name="section_unfinished">未完成</string>
+    <string name="section_reflection">回顧</string>
+    <string name="section_tasks">任務</string>
+    <string name="section_focus_today">今日重點</string>
+    <string name="section_loose_ends">待處理</string>
+    <string name="section_goals_next_week">下週目標</string>
+    <string name="label_generated">已產生</string>
+    <string name="label_items">項目</string>
+    <string name="label_tip">建議</string>
+    <string name="notion_link_label">Notion</string>
+    <string name="footer_powered_by">由 Gemini · Notion 驅動</string>
+    <string name="error_notion">無法連線 Notion，請在設定中確認你的 Token。</string>
+    <string name="retrying_attempt">重試中… (%1$d/%2$d)</string>
+    <string name="section_model">模型</string>
+    <string name="action_open_settings">開啟設定</string>
+    <string name="empty_high_priority">今天沒有高優先任務</string>
+    <string name="empty_enjoy">好好享受今天吧，Luna。</string>
+    <string name="settings_title">設定</string>
+    <string name="cd_settings">設定</string>
+    <string name="cd_notion_link">在 Notion 中開啟</string>
+    <string name="settings_intro">請輸入你的 API 金鑰，它們會加密儲存在這台裝置上，不會離開你的手機。</string>
+    <string name="settings_section_provider">AI 提供者</string>
+    <string name="settings_section_credentials">憑證</string>
+    <string name="settings_field_claude">Claude API 金鑰</string>
+    <string name="settings_section_data_source">資料來源</string>
+    <string name="settings_field_gemini">Gemini API 金鑰</string>
+    <string name="settings_field_notion">Notion 整合 Token</string>
+    <string name="settings_field_database">Notion 資料庫（URL 或 ID）</string>
+    <string name="settings_button_save">儲存</string>
+    <string name="settings_feedback_saved">已儲存</string>
+    <string name="settings_button_test">測試 Notion 連線</string>
+    <string name="settings_test_in_progress">連線中…</string>
+    <string name="settings_test_success">找到 %1$d 個高優先任務</string>
+    <string name="settings_test_failure">失敗：%1$s</string>
+    <string name="settings_section_behavior">行為</string>
+    <string name="settings_auto_run_label">啟動時自動執行</string>
+    <string name="settings_auto_run_help">開啟後，打開 App 時助理會自動執行。關閉時，請手動點擊「立即執行」。</string>
+    <string name="settings_daily_briefing_label">每日簡報通知</string>
+    <string name="settings_daily_briefing_help">在你設定的時間喚醒助理，並以通知推送簡報。</string>
+    <string name="settings_briefing_time_label">簡報時間</string>
+    <string name="settings_time_picker_title">選擇簡報時間</string>
+    <string name="settings_time_picker_confirm">設定</string>
+    <string name="settings_time_picker_cancel">取消</string>
+    <string name="notification_channel_briefing">每日簡報</string>
+    <string name="notification_channel_briefing_desc">Morning Agent 的每日 Notion 任務摘要與 Gemini 建議。</string>
+    <string name="notification_title">你的簡報 — %1$d 個任務</string>
+    <string name="notification_sample_body">範例簡報 — 在郵件搶走你的早晨之前，先處理最深入的任務。</string>
+    <string name="settings_button_test_notification">發送測試通知</string>
+    <string name="cd_back">返回</string>
+
+    <!-- Language -->
+    <string name="settings_language_label">語言</string>
+    <string name="settings_language_sub">選擇 App 的顯示語言。</string>
+
+    <!-- Snackbar messages -->
+    <string name="snackbar_applied">已套用</string>
+    <string name="snackbar_apply_failed">無法套用該操作</string>
+    <string name="snackbar_task_not_in_briefing">該任務不在目前的簡報中 — 請重新整理後再試。</string>
+    <string name="snackbar_promoted">已推送至 Notion</string>
+    <string name="snackbar_promote_failed">無法推送任務</string>
+    <string name="dialog_ok">確定</string>
+    <string name="dialog_cancel">取消</string>
+
+    <!-- v4 — per-slot copy -->
+
+    <!-- Dawn (05:00–08:59) -->
+    <string name="greeting_dawn">早安，Luna。</string>
+    <string name="sub_dawn">全新的開始。今天有三件重要的事。</string>
+    <string name="runlabel_dawn">開始新的一天</string>
+    <string name="status_dawn">簡報就緒</string>
+    <string name="quote_dawn">今早先選一件能完成的事，然後建立節奏。先從 SDK 文件開始 — 你現在思緒最清晰，而且它能解鎖兩個後續任務。</string>
+
+    <!-- Midday (09:00–11:59) -->
+    <string name="greeting_midday">上午好，Luna。</string>
+    <string name="sub_midday">最高效時段的中場。</string>
+    <string name="runlabel_midday">重新整理簡報</string>
+    <string name="status_midday">上次執行 09:02</string>
+    <string name="quote_midday">三件事中還有兩件沒動。午餐前把 PR 結掉 — Maya 在線上，快速審核就能讓下一次部署準時出去。</string>
+
+    <!-- Afternoon (12:00–16:59) -->
+    <string name="greeting_afternoon_v4">午安，Luna。</string>
+    <string name="sub_afternoon">天黑前把鬆散的線收好。</string>
+    <string name="runlabel_afternoon">重新整理簡報</string>
+    <string name="status_afternoon">休息中</string>
+    <string name="quote_afternoon">別開始新的事了。把 PR 審核和設計回覆收尾 — 兩個都很快，四點前你會輕鬆很多。</string>
+
+    <!-- Evening (17:00–20:59) -->
+    <string name="greeting_evening_v4">晚上好，Luna。</string>
+    <string name="sub_evening">放鬆。明天都安排好了。</string>
+    <string name="runlabel_evening">確認明天</string>
+    <string name="status_evening">已排定 09:00</string>
+    <string name="quote_evening">明天都安排好了 — 三個高優先項目已排入。SDK 文件需要最多時間，其他的可以穿插進行。</string>
+
+    <!-- Night (21:00–04:59) -->
+    <string name="greeting_night">很晚了，Luna。</string>
+    <string name="sub_night">放下吧。助理會處理明天的事。</string>
+    <string name="runlabel_night">規劃明天</string>
+    <string name="status_night">靜音時段</string>
+    <string name="quote_night">放下吧。你今天完成了九個中的六個，包括認證重構。文件可以再睡一晚。</string>
+
+    <!-- v4 — new section + UI labels -->
+    <string name="section_briefing">簡報</string>
+    <string name="section_today">今天</string>
+    <string name="label_n_items">%1$d 個項目</string>
+    <string name="footer_powered_by_v4">由 Gemini · Notion MCP 驅動</string>
+    <string name="label_next_run">下次執行</string>
+    <string name="action_open_task">開啟任務</string>
+    <string name="wordmark_agent">Agent</string>
+
+    <!-- Shared posts -->
+    <string name="share_saved_toast">已儲存到 Morning Agent</string>
+    <string name="share_saved_pending_toast">已儲存 · 請在 App 中完成 Notion 同步設定</string>
+    <string name="share_saved_failed_toast">儲存失敗 — 請再試一次</string>
+    <string name="cd_saved_posts">已儲存的貼文</string>
+    <string name="home_pending_banner">%1$d 筆儲存待同步 · 完成 Notion 設定</string>
+    <string name="cd_delete_post">刪除已儲存的貼文</string>
+    <string name="cd_post_overflow">貼文操作</string>
+    <string name="saved_search_placeholder">搜尋內容、作者、來源</string>
+
+    <!-- v4 Settings -->
+    <string name="settings_provider_coming_soon">即將推出</string>
+    <string name="settings_model_options_meta">%1$s · %2$d 個選項</string>
+    <string name="settings_behavior_auto_run_sub">打開 App 時自動執行助理。</string>
+    <string name="settings_behavior_daily_briefing_sub">簡報準備好時推送通知。</string>
+    <string name="settings_behavior_briefing_time_sub">喚醒助理並發送簡報。</string>
+
+    <!-- Saved post categories -->
+    <string name="settings_section_saved_posts">儲存貼文分類</string>
+    <string name="settings_saved_posts_count">分類（%1$d）</string>
+    <string name="settings_saved_posts_no_keywords">尚未設定關鍵字</string>
+    <string name="settings_saved_posts_add_category">+ 新增分類</string>
+    <string name="settings_saved_posts_sheet_title_edit">編輯分類</string>
+    <string name="settings_saved_posts_sheet_title_add">新增分類</string>
+    <string name="settings_saved_posts_field_name">名稱</string>
+    <string name="settings_saved_posts_field_keywords">關鍵字</string>
+    <string name="settings_saved_posts_field_keywords_sub">選填。符合此分類的關鍵字 — 同義詞和相關概念都算。</string>
+    <string name="settings_saved_posts_keyword_placeholder">新增關鍵字</string>
+    <string name="settings_saved_posts_save">儲存</string>
+    <string name="settings_saved_posts_delete">刪除分類</string>
+    <string name="settings_saved_posts_name_counter">%1$d / %2$d 字元</string>
+    <string name="settings_saved_posts_name_too_short">名稱需要 %1$d–%2$d 個字元</string>
+    <string name="settings_saved_posts_seed_lock">「Misc」無法刪除 — 這是分類器的預設值。</string>
+    <string name="cd_remove_keyword">移除關鍵字</string>
+</resources>
