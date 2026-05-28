@@ -161,4 +161,18 @@
     <string name="settings_saved_posts_name_too_short">名稱需要 %1$d–%2$d 個字元</string>
     <string name="settings_saved_posts_seed_lock">「Misc」無法刪除 — 這是分類器的預設值。</string>
     <string name="cd_remove_keyword">移除關鍵字</string>
+
+    <!-- Temporary plan (recovery PR adds the management screen) -->
+    <string name="temp_plan_expired">已過期</string>
+    <string name="temp_plan_no_plan">沒有計畫</string>
+    <string name="temp_plan_empty_hint">為旅行、活動或截止日期準備的短期任務清單 — 期間結束後自動封存。</string>
+    <string name="temp_plan_empty_cta">＋ 新計畫</string>
+    <string name="temp_plan_create_button">建立計畫</string>
+    <string name="temp_plan_field_name">計畫名稱</string>
+    <string name="temp_plan_field_start">開始</string>
+    <string name="temp_plan_field_end">結束</string>
+    <string name="temp_plan_add_task">＋ 新增任務</string>
+    <string name="temp_plan_delete_button">刪除計畫</string>
+    <string name="temp_plan_task_placeholder">要做什麼？</string>
+    <string name="temp_plan_day_header">第 %1$d 天</string>
 </resources>
