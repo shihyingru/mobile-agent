@@ -4,6 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -31,13 +32,14 @@ fun TempPlanHeader(onBack: () -> Unit) {
         verticalAlignment     = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        // 44dp tap target, flush-left via negative margin on the icon container.
+        // 44dp tap target nudged 6dp left so the icon sits flush with the
+        // page's 4dp horizontal padding (design §5.4 "margin-left -6dp").
         Box(
             modifier         = Modifier
+                .offset(x = (-6).dp)
                 .size(44.dp)
                 .clip(CircleShape)
-                .clickable(onClick = onBack)
-                .padding((-6).dp),
+                .clickable(onClick = onBack),
             contentAlignment = Alignment.Center,
         ) {
             Icon(

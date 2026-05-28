@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -145,8 +146,10 @@ private fun SuggestionRow(
                 color = morning.textSecondary,
             )
             Spacer(Modifier.height(8.dp))
+            // -10dp leading offset bleeds the Apply button's own padding back
+            // so the row reads flush with the title block above (per §4.3).
             Row(
-                modifier              = Modifier.padding(start = (-10).dp),
+                modifier              = Modifier.offset(x = (-10).dp),
                 horizontalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 ApplyButton(onClick = onApply)
