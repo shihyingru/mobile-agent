@@ -229,6 +229,7 @@ private fun HomeScreenContent(
                         BriefingActions(
                             actions  = visibleActions,
                             tasks    = briefing.tasks,
+                            model    = briefing.model,
                             onApply  = onApplyAction,
                             onDismiss = onDismissAction,
                             modifier = Modifier.padding(horizontal = 4.dp),

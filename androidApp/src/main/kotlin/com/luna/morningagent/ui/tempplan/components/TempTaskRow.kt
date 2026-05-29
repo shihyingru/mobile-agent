@@ -3,21 +3,20 @@ package com.luna.morningagent.ui.tempplan.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -26,47 +25,42 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.luna.morningagent.R
 import com.luna.morningagent.data.tempplan.TempTask
 import com.luna.morningagent.ui.theme.MorningType
 import com.luna.morningagent.ui.theme.morning
 
+// EditableTodoRow per design §5.7. Lives inside the single tasks card on the
+// modification page. Promote is intentionally absent here — that action belongs
+// on the home PlanCard (design §7). Already-promoted tasks render a small
+// "Synced" label in place of the × button so the act is irreversible from here.
 @Composable
 fun TempTaskRow(
     task: TempTask,
     onToggle: () -> Unit,
-    onPromote: () -> Unit,
-    onRemove: (() -> Unit)? = null,
+    onRemove: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val morning = MaterialTheme.morning
+    val morning  = MaterialTheme.morning
     val promoted = task.promotedToNotionId != null
     Row(
-        modifier          = modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
+        modifier              = modifier
+            .fillMaxWidth()
+            .padding(14.dp),
+        verticalAlignment     = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Box(
-            modifier = Modifier
-                .size(20.dp)
-                .clip(CircleShape)
-                .border(1.5.dp, if (task.checked) morning.success else morning.textMuted, CircleShape)
-                .background(if (task.checked) morning.success else morning.surface)
-                .clickable(onClick = onToggle),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (task.checked) {
-                Icon(
-                    imageVector        = Icons.Rounded.Check,
-                    contentDescription = null,
-                    tint               = morning.onAccent,
-                    modifier           = Modifier.size(14.dp),
-                )
-            }
-        }
-        Spacer(Modifier.width(10.dp))
+        EditableCheckbox(
+            checked  = task.checked,
+            onToggle = onToggle,
+        )
         Text(
             text           = task.title,
-            style          = MorningType.BodyReadItalic,
+            style          = MorningType.TaskTitle.copy(
+                fontSize   = 15.5.sp,
+                lineHeight = (15.5 * 1.3f).sp,
+            ),
             color          = if (task.checked) morning.textMuted else morning.textPrimary,
             textDecoration = if (task.checked) TextDecoration.LineThrough else TextDecoration.None,
             maxLines       = 1,
@@ -76,27 +70,63 @@ fun TempTaskRow(
         if (promoted) {
             Text(
                 text  = stringResource(R.string.temp_plan_promoted),
-                style = MorningType.MetaMono,
+                style = MorningType.ButtonLabel.copy(fontSize = 12.sp),
                 color = morning.success,
             )
         } else {
-            TextButton(onClick = onPromote) {
-                Text(
-                    text  = stringResource(R.string.temp_plan_promote),
-                    style = MorningType.ButtonLabel,
-                    color = morning.accent,
-                )
-            }
-        }
-        if (onRemove != null) {
-            IconButton(onClick = onRemove, modifier = Modifier.size(28.dp)) {
+            Box(
+                modifier         = Modifier
+                    .size(28.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .clickable(onClick = onRemove),
+                contentAlignment = Alignment.Center,
+            ) {
                 Icon(
                     imageVector        = Icons.Rounded.Close,
-                    contentDescription = null,
-                    tint               = morning.textMuted,
+                    contentDescription = stringResource(R.string.cd_remove_task),
+                    tint               = morning.textMuted.copy(alpha = 0.7f),
                     modifier           = Modifier.size(16.dp),
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun EditableCheckbox(
+    checked: Boolean,
+    onToggle: () -> Unit,
+) {
+    val morning = MaterialTheme.morning
+    Box(
+        modifier         = Modifier
+            .size(20.dp)
+            .clip(CircleShape)
+            .clickable(onClick = onToggle),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (checked) {
+            Box(
+                modifier         = Modifier
+                    .size(20.dp)
+                    .clip(CircleShape)
+                    .background(morning.accent),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector        = Icons.Rounded.Check,
+                    contentDescription = null,
+                    tint               = morning.onAccent,
+                    modifier           = Modifier.size(12.dp),
+                )
+            }
+        } else {
+            Box(
+                modifier = Modifier
+                    .size(20.dp)
+                    .clip(CircleShape)
+                    .border(1.5.dp, morning.textMuted.copy(alpha = 0.7f), CircleShape),
+            )
         }
     }
 }

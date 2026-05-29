@@ -9,15 +9,14 @@ import androidx.lifecycle.viewModelScope
 import com.luna.morningagent.data.secure.TokenStore
 import com.luna.morningagent.data.tempplan.TempPlan
 import com.luna.morningagent.data.tempplan.TempPlanRepository
+import java.time.LocalDate
 import kotlinx.coroutines.launch
 
+// Two states only — design's modification page auto-creates an "Untitled plan"
+// when the user lands with none active, so there's no separate creation form.
+// Empty is a transient state that the screen flips to Viewing via createDefault().
 sealed interface TempPlanUiState {
     data object Empty : TempPlanUiState
-    data class Creating(
-        val name: String = "",
-        val startDate: String = "",
-        val endDate: String = "",
-    ) : TempPlanUiState
     data class Viewing(val plan: TempPlan) : TempPlanUiState
 }
 
@@ -41,30 +40,25 @@ class TempPlanViewModel(application: Application) : AndroidViewModel(application
         uiState = if (active != null) TempPlanUiState.Viewing(active) else TempPlanUiState.Empty
     }
 
-    fun startCreating() {
-        uiState = TempPlanUiState.Creating()
-    }
-
-    fun updateName(name: String) {
-        val s = uiState as? TempPlanUiState.Creating ?: return
-        uiState = s.copy(name = name)
-    }
-
-    fun updateStartDate(date: String) {
-        val s = uiState as? TempPlanUiState.Creating ?: return
-        uiState = s.copy(startDate = date)
-    }
-
-    fun updateEndDate(date: String) {
-        val s = uiState as? TempPlanUiState.Creating ?: return
-        uiState = s.copy(endDate = date)
-    }
-
-    fun createPlan() {
-        val s = uiState as? TempPlanUiState.Creating ?: return
-        if (s.name.isBlank() || s.startDate.isBlank() || s.endDate.isBlank()) return
-        val plan = repo.createPlan(s.name.trim(), s.startDate, s.endDate)
+    // Called by TempPlanScreen when entered with no active plan — design §5.5:
+    // default name "Untitled plan", window [today, today + 6 days]. The user
+    // renames via the inline edit pencil after the page lands.
+    fun createDefaultPlan(defaultName: String) {
+        if (uiState !is TempPlanUiState.Empty) return
+        val today = LocalDate.now()
+        val plan = repo.createPlan(
+            name      = defaultName,
+            startDate = today.toString(),
+            endDate   = today.plusDays(6).toString(),
+        )
         uiState = TempPlanUiState.Viewing(plan)
+    }
+
+    fun renamePlan(name: String) {
+        val plan = (uiState as? TempPlanUiState.Viewing)?.plan ?: return
+        val trimmed = name.trim().ifBlank { return }
+        repo.renamePlan(plan.id, trimmed)
+        refresh()
     }
 
     fun addTask(dayIndex: Int? = null) {
