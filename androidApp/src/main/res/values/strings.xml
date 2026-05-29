@@ -171,6 +171,7 @@
 
     <!-- Temporary plan -->
     <string name="section_plan">PLAN</string>
+    <string name="temp_plan_screen_title">Plan</string>
     <string name="temp_plan_days_left">%1$d days left</string>
     <string name="temp_plan_last_day">Last day</string>
     <string name="temp_plan_promote">Promote</string>

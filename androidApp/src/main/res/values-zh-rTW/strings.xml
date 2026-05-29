@@ -163,6 +163,7 @@
     <string name="cd_remove_keyword">移除關鍵字</string>
 
     <!-- Temporary plan (recovery PR adds the management screen) -->
+    <string name="temp_plan_screen_title">計畫</string>
     <string name="temp_plan_expired">已過期</string>
     <string name="temp_plan_no_plan">沒有計畫</string>
     <string name="temp_plan_empty_title">建立計畫</string>

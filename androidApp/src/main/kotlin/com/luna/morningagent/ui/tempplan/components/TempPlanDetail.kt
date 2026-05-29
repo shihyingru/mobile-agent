@@ -29,6 +29,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -36,12 +37,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.luna.morningagent.R
@@ -103,8 +109,34 @@ fun TempPlanDetail(
 @Composable
 private fun TitleBlock(plan: TempPlan, onRenamePlan: (String) -> Unit) {
     val morning = MaterialTheme.morning
-    var renaming by remember { mutableStateOf(false) }
-    var draft    by remember(plan.id, plan.name) { mutableStateOf(plan.name) }
+    val keyboard = LocalSoftwareKeyboardController.current
+    val focusRequester = remember { FocusRequester() }
+    var renaming  by remember { mutableStateOf(false) }
+    var hadFocus  by remember { mutableStateOf(false) }
+    // TextFieldValue (not a bare String) so we can seed the cursor at the end
+    // of the title when edit-mode opens, instead of defaulting to position 0.
+    var draft     by remember(plan.id, plan.name) {
+        mutableStateOf(TextFieldValue(plan.name, TextRange(plan.name.length)))
+    }
+
+    // requestFocus() can throw if the modifier isn't attached yet on the very
+    // first frame after the field enters composition — runCatching swallows
+    // that; the user can always tap the field directly as a fallback.
+    LaunchedEffect(renaming) {
+        if (renaming) {
+            runCatching { focusRequester.requestFocus() }
+            keyboard?.show()
+        } else {
+            hadFocus = false
+        }
+    }
+
+    val commitRename: () -> Unit = {
+        val next = draft.text.trim()
+        if (next.isNotEmpty() && next != plan.name) onRenamePlan(next)
+        renaming = false
+        keyboard?.hide()
+    }
 
     val start = LocalDate.parse(plan.startDate)
     val end   = LocalDate.parse(plan.endDate)
@@ -121,29 +153,55 @@ private fun TitleBlock(plan: TempPlan, onRenamePlan: (String) -> Unit) {
 
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp)) {
         if (renaming) {
-            BasicTextField(
-                value         = draft,
-                onValueChange = { draft = it },
-                singleLine    = true,
-                cursorBrush   = SolidColor(morning.accent),
-                textStyle     = MorningType.GreetingDisplay.copy(
-                    fontSize      = 34.sp,
-                    lineHeight    = (34 * 1.05f).sp,
-                    letterSpacing = (-0.6).sp,
-                    color         = morning.textPrimary,
-                ),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = {
-                    onRenamePlan(draft)
-                    renaming = false
-                }),
-                modifier = Modifier.fillMaxWidth(),
-            )
+            // Visible edit affordance: soft accent wash + accent underline so
+            // tap → edit-mode transition is unambiguous (was silent before).
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(morning.accent.copy(alpha = 0.06f))
+                    .padding(horizontal = 6.dp, vertical = 4.dp),
+            ) {
+                BasicTextField(
+                    value         = draft,
+                    onValueChange = { draft = it },
+                    singleLine    = true,
+                    cursorBrush   = SolidColor(morning.accent),
+                    textStyle     = MorningType.GreetingDisplay.copy(
+                        color = morning.textPrimary,
+                    ),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { commitRename() }),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(focusRequester)
+                        .onFocusChanged { state ->
+                            // Initial onFocusChanged fires with isFocused=false
+                            // *before* focus is granted — only commit on a real
+                            // loss after focus was actually gained.
+                            if (state.isFocused) {
+                                hadFocus = true
+                            } else if (hadFocus && renaming) {
+                                commitRename()
+                            }
+                        },
+                )
+                Spacer(Modifier.height(4.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(1.dp)
+                        .background(morning.accent.copy(alpha = 0.6f)),
+                )
+            }
         } else {
             Row(
                 modifier              = Modifier
                     .clip(RoundedCornerShape(8.dp))
-                    .clickable { renaming = true; draft = plan.name },
+                    .clickable {
+                        draft = TextFieldValue(plan.name, TextRange(plan.name.length))
+                        renaming = true
+                    },
                 verticalAlignment     = Alignment.Bottom,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
