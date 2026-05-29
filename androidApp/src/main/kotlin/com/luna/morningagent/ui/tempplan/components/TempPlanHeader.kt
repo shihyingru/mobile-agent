@@ -19,7 +19,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.luna.morningagent.R
 import com.luna.morningagent.ui.theme.MorningType
 import com.luna.morningagent.ui.theme.morning
@@ -50,9 +49,9 @@ fun TempPlanHeader(onBack: () -> Unit) {
             )
         }
         Text(
-            text  = stringResource(R.string.section_plan),
-            style = MorningType.LabelMono.copy(fontSize = 11.sp, letterSpacing = 2.4.sp),
-            color = morning.textMuted,
+            text  = stringResource(R.string.temp_plan_screen_title),
+            style = MorningType.ScreenTitle,
+            color = morning.textPrimary,
         )
     }
 }
