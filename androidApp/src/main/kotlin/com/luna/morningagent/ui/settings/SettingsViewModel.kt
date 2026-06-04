@@ -33,10 +33,12 @@ data class SettingsUiState(
     val selectedModelId: String  = "",
     val geminiDraft: String      = "",
     val claudeDraft: String      = "",
+    val placesDraft: String      = "",
     val notionDraft: String      = "",
     val databaseDraft: String    = "",
     val geminiSavedLast4: String? = null,    // null = nothing saved yet
     val claudeSavedLast4: String? = null,
+    val placesSavedLast4: String? = null,
     val notionSavedLast4: String? = null,
     val savedDatabaseId: String  = "",       // shown in field as draft starting value
     val autoRun: Boolean         = true,     // toggled directly, not via Save
@@ -76,6 +78,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             selectedModelId  = modelIdFor(provider),
             geminiSavedLast4 = store.getGeminiKey()?.takeLast(4)?.takeIf { it.isNotEmpty() },
             claudeSavedLast4 = store.getClaudeKey()?.takeLast(4)?.takeIf { it.isNotEmpty() },
+            placesSavedLast4 = store.getGooglePlacesKey()?.takeLast(4)?.takeIf { it.isNotEmpty() },
             notionSavedLast4 = store.getNotionToken()?.takeLast(4)?.takeIf { it.isNotEmpty() },
             savedDatabaseId  = savedDb,
             databaseDraft    = savedDb,
@@ -111,6 +114,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     fun updateClaudeDraft(value: String) {
         uiState = uiState.copy(claudeDraft = value, justSaved = false)
+    }
+
+    fun updatePlacesDraft(value: String) {
+        uiState = uiState.copy(placesDraft = value, justSaved = false)
     }
 
     // Provider is a one-time setup choice, not a daily decision — persist on
@@ -210,6 +217,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         uiState = uiState.copy(
             geminiDraft   = "",
             claudeDraft   = "",
+            placesDraft   = "",
             notionDraft   = "",
             databaseDraft = uiState.savedDatabaseId,
             justSaved     = false,
@@ -259,6 +267,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     fun save() {
         if (uiState.geminiDraft.isNotEmpty()) store.saveGeminiKey(uiState.geminiDraft)
         if (uiState.claudeDraft.isNotEmpty()) store.saveClaudeKey(uiState.claudeDraft)
+        if (uiState.placesDraft.isNotEmpty()) store.saveGooglePlacesKey(uiState.placesDraft)
         if (uiState.notionDraft.isNotEmpty()) store.saveNotionToken(uiState.notionDraft)
 
         val cleanedDb = extractNotionDatabaseId(uiState.databaseDraft)
@@ -274,10 +283,12 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             selectedModelId  = uiState.selectedModelId,
             geminiDraft      = "",
             claudeDraft      = "",
+            placesDraft      = "",
             notionDraft      = "",
             databaseDraft    = cleanedDb,
             geminiSavedLast4 = store.getGeminiKey()?.takeLast(4)?.takeIf { it.isNotEmpty() },
             claudeSavedLast4 = store.getClaudeKey()?.takeLast(4)?.takeIf { it.isNotEmpty() },
+            placesSavedLast4 = store.getGooglePlacesKey()?.takeLast(4)?.takeIf { it.isNotEmpty() },
             notionSavedLast4 = store.getNotionToken()?.takeLast(4)?.takeIf { it.isNotEmpty() },
             savedDatabaseId  = cleanedDb,
             autoRun          = uiState.autoRun,
@@ -287,6 +298,13 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             dailyEvening     = uiState.dailyEvening,
             eveningHour      = uiState.eveningHour,
             eveningMinute    = uiState.eveningMinute,
+            // Carry forward the non-credential view state the rebuild would
+            // otherwise reset: the saved-post taxonomy + counts and the language
+            // choice aren't tied to Save, so dropping them blanks the category
+            // section (and reverts the language label) on every save.
+            categories           = uiState.categories,
+            postCountsByCategory = uiState.postCountsByCategory,
+            appLanguage          = uiState.appLanguage,
             justSaved        = true,
         )
 
