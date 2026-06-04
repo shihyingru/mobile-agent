@@ -44,6 +44,7 @@
     <string name="settings_field_claude">Claude API 金鑰</string>
     <string name="settings_section_data_source">資料來源</string>
     <string name="settings_field_gemini">Gemini API 金鑰</string>
+    <string name="settings_field_places">Google Places API 金鑰（選用）</string>
     <string name="settings_field_notion">Notion 整合 Token</string>
     <string name="settings_field_database">Notion 資料庫（URL 或 ID）</string>
     <string name="settings_button_save">儲存</string>
@@ -135,6 +136,8 @@
     <string name="home_pending_banner">%1$d 筆儲存待同步 · 完成 Notion 設定</string>
     <string name="cd_delete_post">刪除已儲存的貼文</string>
     <string name="cd_post_overflow">貼文操作</string>
+    <string name="cd_resolve_location">在地圖上尋找位置</string>
+    <string name="location_none_toast">這篇貼文找不到位置</string>
     <string name="saved_search_placeholder">搜尋內容、作者、來源</string>
 
     <!-- v4 Settings -->

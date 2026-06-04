@@ -74,6 +74,7 @@ import com.luna.morningagent.data.sharedposts.SharedPost
 import com.luna.morningagent.ui.settings.components.SettingsInput
 import com.luna.morningagent.ui.sharedposts.components.SavedPostActionSheet
 import com.luna.morningagent.ui.sharedposts.components.SavedPostCard
+import com.luna.morningagent.ui.sharedposts.components.SavedPostPlacesSheet
 import com.luna.morningagent.ui.theme.InterFamily
 import com.luna.morningagent.ui.theme.MorningAgentTheme
 import com.luna.morningagent.ui.theme.MorningType
@@ -116,6 +117,7 @@ fun SavedPostsScreen(
 
     var expandedId: String? by remember { mutableStateOf(null) }
     var sheetPost: SharedPost? by remember { mutableStateOf(null) }
+    var placesSheetPost: SharedPost? by remember { mutableStateOf(null) }
 
     Box(
         modifier = modifier
@@ -183,14 +185,21 @@ fun SavedPostsScreen(
                         }
                     }
                     SavedPostCard(
-                        post         = post,
-                        onTap        = {
+                        post              = post,
+                        onTap             = {
                             if (post.url != null) openExternal()
                             else expandedId = if (expandedId == post.localId) null else post.localId
                         },
-                        onOverflow   = { sheetPost = post },
-                        onDelete     = { vm.delete(post) },
-                        bodyMaxLines = if (expandedId == post.localId) Int.MAX_VALUE else 4,
+                        onOverflow        = { sheetPost = post },
+                        onDelete          = { vm.delete(post) },
+                        bodyMaxLines      = if (expandedId == post.localId) Int.MAX_VALUE else 4,
+                        onOpenLocation    = {
+                            val locs = post.locations
+                            when {
+                                locs.size == 1 -> openLocationInMap(context, locs[0].name, locs[0].mapsUri)
+                                locs.size > 1  -> placesSheetPost = post
+                            }
+                        },
                     )
                 }
             }
@@ -218,6 +227,14 @@ fun SavedPostsScreen(
                 vm.delete(target)
                 sheetPost = null
             },
+        )
+    }
+
+    placesSheetPost?.let { target ->
+        SavedPostPlacesSheet(
+            places      = target.locations,
+            onOpenPlace = { place -> openLocationInMap(context, place.name, place.mapsUri) },
+            onDismiss   = { placesSheetPost = null },
         )
     }
 }

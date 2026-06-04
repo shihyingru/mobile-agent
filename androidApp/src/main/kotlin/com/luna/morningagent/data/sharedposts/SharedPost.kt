@@ -22,6 +22,11 @@ data class SharedPost(
     val author: String? = null,           // From EXTRA_SUBJECT or URL path; null when unknown
     val url: String? = null,              // First URL in the shared text; null for pure-text shares
     val imageUrl: String? = null,         // og:image / twitter:image from the body fetcher; signed CDN URL — treat as ephemeral
+    // Places resolved once at share time (text-first, image-fallback → Places).
+    // Local-only — Notion doesn't store these; refreshFromNotion preserves them.
+    // Empty = no location found → the Saved card hides the map pin. One entry =
+    // tap opens it directly; several = tap opens a places bottom sheet.
+    val locations: List<ResolvedPlace> = emptyList(),
     val categories: List<String> = emptyList(),
     val summary: String? = null,
     val savedAt: Instant,

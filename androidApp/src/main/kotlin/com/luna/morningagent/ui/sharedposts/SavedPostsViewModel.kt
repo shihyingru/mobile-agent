@@ -113,6 +113,10 @@ class SavedPostsViewModel(application: Application) : AndroidViewModel(applicati
     val pendingSyncCount: Int
         get() = posts.count { it.pendingSync }
 
+    // Locations are resolved once at share time (SharedPostEnrichWorker) and
+    // stored on the post; the Saved card reads post.locations directly and opens
+    // the map (or a places sheet) on tap — no on-demand resolve here.
+
     // --- Delete -------------------------------------------------------------
 
     fun delete(post: SharedPost) {
