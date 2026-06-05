@@ -1,6 +1,9 @@
 package com.luna.morningagent.worker
 
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
+import androidx.work.BackoffPolicy
 import androidx.work.CoroutineWorker
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
@@ -11,22 +14,24 @@ import com.luna.morningagent.data.sharedposts.SaveResult
 import com.luna.morningagent.data.sharedposts.SharedPostBodyFetcher
 import com.luna.morningagent.data.sharedposts.SharedPostCategorizer
 import com.luna.morningagent.data.sharedposts.SharedPostsRepository
+import java.util.concurrent.TimeUnit
 
 /**
- * Runs the full "save a shared post" pipeline as a background job.
+ * Runs the whole "save a shared post" pipeline as one WorkManager job:
+ * save → enrich body + image → sync to Notion → categorize → resolve places.
  *
- * This used to run in an app-scoped coroutine launched from the NoDisplay
- * [com.luna.morningagent.ShareReceiverActivity], which `finish()`es instantly —
- * so the process went cached and Android froze (or killed) it mid-pipeline,
- * leaving sync / categorize / location-resolve unfinished until the app was
- * reopened. WorkManager keeps the process alive while the job runs, survives
- * process death (the request is persisted on enqueue), and starts promptly when
- * expedited.
+ * Why one worker (not a save→enrich chain): TokenStore serves reads from a
+ * per-instance in-memory snapshot taken at construction and persists writes
+ * asynchronously, so a second worker's fresh TokenStore can't reliably see a
+ * post the first just saved. Keeping save + enrich in one invocation shares one
+ * TokenStore, so the cache is coherent.
  *
- * Pipeline: save → enrich body + image → sync to Notion → categorize →
- * resolve location (text-first, image-fallback) → persist. Every step degrades
- * silently (the repository keeps unsynced posts in its outbox), so the job
- * always returns success — it never re-runs `save` and so can't duplicate a post.
+ * Offline handling (without a CONNECTED constraint, which would also delay the
+ * save): the post is saved immediately so it appears right away, and if the
+ * device is offline the job returns [Result.retry] (bounded, exponential
+ * backoff) to re-run when connectivity is back. The save is idempotent on a
+ * stable localId, so retries never duplicate the post; every enrich step
+ * overwrites, so they're safe to repeat.
  */
 class SharedPostEnrichWorker(
     appContext: Context,
@@ -34,8 +39,9 @@ class SharedPostEnrichWorker(
 ) : CoroutineWorker(appContext, params) {
 
     override suspend fun doWork(): Result {
+        val localId = inputData.getString(KEY_LOCAL_ID) ?: return Result.failure()
         val rawText = inputData.getString(KEY_TEXT)?.trim().orEmpty()
-        if (rawText.isEmpty()) return Result.success()
+        if (rawText.isEmpty()) return Result.failure()
         val subject = inputData.getString(KEY_SUBJECT)
 
         val ctx         = applicationContext
@@ -44,11 +50,12 @@ class SharedPostEnrichWorker(
         val categorizer = SharedPostCategorizer(tokenStore)
         val bodyFetcher = SharedPostBodyFetcher(tokenStore)
 
-        val saved = (repo.save(rawText, subject) as? SaveResult.SavedPending)?.post
-            ?: return Result.success()
+        // Save (idempotent on localId) so the post appears immediately — even
+        // offline, even on a retry.
+        val saved = (repo.save(rawText, subject, localId) as? SaveResult.SavedPending)?.post
+            ?: return Result.failure()
 
-        // 1. Enrich body + image from the URL (scrape + AI fallback). Image URL
-        //    only comes from the scrape.
+        // 1. Enrich body + image from the URL (scrape + AI fallback).
         val enriched = run {
             val url = saved.url ?: return@run saved
             val needsBody = saved.content == url || saved.content.length < 80
@@ -65,8 +72,7 @@ class SharedPostEnrichWorker(
             working
         }
 
-        // 2. Push to Notion now that content is enriched (no-op when DB unset;
-        //    failures leave pendingSync = true for the setup-flow flush).
+        // 2. Push to Notion (no-op when DB unset or already synced).
         repo.syncToNotion(enriched.localId)
 
         // 3. Categorize → write categories + summary into the cache (and Notion).
@@ -82,30 +88,47 @@ class SharedPostEnrichWorker(
             )
         }
 
-        // 4. Resolve every place once (text-first, image OCR fallback) and persist
-        //    so the Saved card shows an accurate map pin. One place → tap opens it;
-        //    several → tap opens a places sheet. Empty = no pin.
+        // 4. Resolve every place once (text-first, image OCR fallback).
         val places = runCatching {
             bodyFetcher.resolvePostLocations(enriched.content, enriched.imageUrl)
         }.getOrNull().orEmpty()
         repo.updateLocations(enriched.localId, places)
 
-        return Result.success()
+        // If we're offline the enrichment couldn't have succeeded — retry (bounded)
+        // so it completes once the network returns, instead of stranding the post
+        // as a bare-URL card. Online failures (e.g. login-walled) just finish.
+        return if (!isOnline(ctx) && runAttemptCount < MAX_ATTEMPTS) Result.retry()
+               else Result.success()
+    }
+
+    private fun isOnline(context: Context): Boolean {
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            ?: return true
+        val caps = cm.activeNetwork?.let { cm.getNetworkCapabilities(it) } ?: return false
+        return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
     }
 
     companion object {
-        private const val KEY_TEXT    = "shared_text"
-        private const val KEY_SUBJECT = "shared_subject"
+        /** Tag the Saved screen observes so it refreshes when enrichment finishes. */
+        const val TAG = "share-enrich"
+
+        private const val KEY_TEXT     = "shared_text"
+        private const val KEY_SUBJECT  = "shared_subject"
+        private const val KEY_LOCAL_ID = "local_id"
+        private const val MAX_ATTEMPTS = 8
 
         /**
-         * Enqueue the pipeline for a freshly-shared payload. A plain (non-
-         * expedited) job: WorkManager already guarantees it runs while keeping
-         * the process alive and survives process death, and expedited work on
-         * minSdk 26–30 would force a foreground notification on every share.
+         * Enqueue the pipeline for a freshly-shared payload. [localId] is a stable
+         * id generated by the caller so retries don't duplicate the post.
+         * Exponential backoff retries the enrichment when offline.
          */
-        fun enqueue(context: Context, text: String, subject: String?) {
+        fun enqueue(context: Context, localId: String, text: String, subject: String?) {
             val request = OneTimeWorkRequestBuilder<SharedPostEnrichWorker>()
-                .setInputData(workDataOf(KEY_TEXT to text, KEY_SUBJECT to subject))
+                .addTag(TAG)
+                .setInputData(
+                    workDataOf(KEY_LOCAL_ID to localId, KEY_TEXT to text, KEY_SUBJECT to subject),
+                )
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
                 .build()
             WorkManager.getInstance(context).enqueue(request)
         }

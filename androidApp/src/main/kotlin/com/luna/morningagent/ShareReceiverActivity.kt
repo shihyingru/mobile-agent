@@ -7,6 +7,7 @@ import android.util.Log
 import android.widget.Toast
 import com.luna.morningagent.data.secure.TokenStore
 import com.luna.morningagent.worker.SharedPostEnrichWorker
+import java.util.UUID
 
 /**
  * Lightweight receiver for ACTION_SEND text/plain shares from any app.
@@ -18,8 +19,8 @@ import com.luna.morningagent.worker.SharedPostEnrichWorker
  * The save → enrich → sync → categorize → resolve-location pipeline runs in
  * [SharedPostEnrichWorker], NOT here: this activity `finish()`es immediately, so
  * any work left running in-process gets frozen/killed once the process is
- * cached. WorkManager keeps its process alive for the job and survives process
- * death, so the pipeline actually completes.
+ * cached. WorkManager keeps its process alive for the job, survives process
+ * death, and retries the work when the device is offline.
  */
 class ShareReceiverActivity : Activity() {
 
@@ -43,7 +44,7 @@ class ShareReceiverActivity : Activity() {
         val toastRes = if (hasDb) R.string.share_saved_toast else R.string.share_saved_pending_toast
         Toast.makeText(applicationContext, toastRes, Toast.LENGTH_SHORT).show()
 
-        SharedPostEnrichWorker.enqueue(applicationContext, rawText, subject)
+        SharedPostEnrichWorker.enqueue(applicationContext, UUID.randomUUID().toString(), rawText, subject)
         finish()
     }
 }

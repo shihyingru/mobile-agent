@@ -232,9 +232,16 @@ fun SavedPostsScreen(
 
     placesSheetPost?.let { target ->
         SavedPostPlacesSheet(
-            places      = target.locations,
-            onOpenPlace = { place -> openLocationInMap(context, place.name, place.mapsUri) },
-            onDismiss   = { placesSheetPost = null },
+            places        = target.locations,
+            onOpenPlace   = { place -> openLocationInMap(context, place.name, place.mapsUri) },
+            onDeletePlace = { place ->
+                vm.deletePlace(target, place)
+                // Re-point the sheet at the updated post (one fewer place), or
+                // close it once the last place is gone.
+                placesSheetPost = vm.posts.firstOrNull { it.localId == target.localId }
+                    ?.takeIf { it.locations.isNotEmpty() }
+            },
+            onDismiss     = { placesSheetPost = null },
         )
     }
 }

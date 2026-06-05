@@ -283,8 +283,10 @@ class SharedPostBodyFetcher(
 
     private fun buildTextSignalsBody(content: String): JsonObject = buildJsonObject {
         putJsonObject("generationConfig") {
-            put("temperature", 0.2)
-            put("maxOutputTokens", 1024)
+            // Temperature 0 — deterministic, exhaustive extraction (was skipping
+            // items / varying the count run-to-run at 0.2).
+            put("temperature", 0)
+            put("maxOutputTokens", 2048)
             put("responseMimeType", "application/json")
             putJsonObject("thinkingConfig") { put("thinkingBudget", 0) }
         }
@@ -300,8 +302,8 @@ class SharedPostBodyFetcher(
 
     private fun textSignalsPrompt(content: String): String = buildString {
         appendLine("Extract concrete location signals from this social-media post caption.")
-        appendLine("Return \"places\": every DISTINCT real-world destination the post recommends or is about — restaurants, cafés, shops, landmarks. For each, give a short \"name\" and a complete geocodable \"query\" of the form \"venue, neighbourhood, city\" (e.g. \"Hippo, Yeonnam-dong, Seoul\") so a bare name isn't matched to the wrong city.")
-        appendLine("Order by prominence (the main place first). Do NOT add a bare city, district, or country as its own place — use those only inside each query. Skip near-duplicates. Return at most 12. Empty array if no specific place is mentioned.")
+        appendLine("Return \"places\": EVERY distinct real-world destination the post recommends or is about — restaurants, cafés, shops, landmarks. If the post is a numbered or bulleted list, include ALL items in their original order and DO NOT skip any. For each, give a short \"name\" and a complete geocodable \"query\" of the form \"venue, neighbourhood, city\" (e.g. \"Hippo, Yeonnam-dong, Seoul\") so a bare name isn't matched to the wrong city.")
+        appendLine("Only merge two entries when they are clearly the SAME venue. Treat different branches of one brand as SEPARATE places, and put each branch's distinguishing detail (its district or branch name) into that entry's query so they resolve to different locations. Do NOT add a bare city, district, or country as its own place — use those only inside each query. Return at most 20. Empty array if no specific place is mentioned.")
         appendLine()
         appendLine("Respond with ONLY this JSON object — no markdown, no commentary:")
         appendLine("""{"places": [{"name": string, "query": string}], "locationSignals": string[]}""")
@@ -324,7 +326,8 @@ class SharedPostBodyFetcher(
         mimeType: String,
     ): JsonObject = buildJsonObject {
         putJsonObject("generationConfig") {
-            put("temperature", 0.2)
+            // Temperature 0 — deterministic, exhaustive extraction.
+            put("temperature", 0)
             put("maxOutputTokens", 2048)
             put("responseMimeType", "application/json")
             // gemini-2.5-flash is a thinking model: left on, it spends the output
@@ -352,8 +355,8 @@ class SharedPostBodyFetcher(
     private fun imageAnalysisPrompt(body: String?): String = buildString {
         appendLine("You are extracting location clues from an image attached to a social-media post.")
         appendLine("Read any text in the image (signs, menus, banners) and note any recognisable landmark or named venue, then combine those with the post body text below.")
-        appendLine("Return \"places\": every DISTINCT real-world destination identifiable from the image and caption — restaurants, cafés, shops, landmarks. For each, give a short \"name\" and a complete geocodable \"query\" of the form \"venue, neighbourhood, city\" (e.g. \"Hippo, Yeonnam-dong, Seoul\") so a bare name isn't matched to the wrong city.")
-        appendLine("Order by prominence (the main place first). Do NOT add a bare city, district, or country as its own place — use those only inside each query. Skip near-duplicates. Return at most 12. Empty array if none.")
+        appendLine("Return \"places\": EVERY distinct real-world destination identifiable from the image and caption — restaurants, cafés, shops, landmarks. If the caption is a numbered or bulleted list, include ALL items in their original order and DO NOT skip any. For each, give a short \"name\" and a complete geocodable \"query\" of the form \"venue, neighbourhood, city\" (e.g. \"Hippo, Yeonnam-dong, Seoul\") so a bare name isn't matched to the wrong city.")
+        appendLine("Only merge two entries when they are clearly the SAME venue. Treat different branches of one brand as SEPARATE places, and put each branch's distinguishing detail (its district or branch name) into that entry's query so they resolve to different locations. Do NOT add a bare city, district, or country as its own place — use those only inside each query. Return at most 20. Empty array if none.")
         appendLine()
         appendLine("Respond with ONLY this JSON object — no markdown, no commentary, and DO NOT dump the raw OCR text:")
         appendLine("""{"places": [{"name": string, "query": string}], "locationSignals": string[], "landmark": string|null}""")
@@ -387,33 +390,45 @@ class SharedPostBodyFetcher(
 
         // Prefer the structured destinations; if a malformed response left only
         // salvaged flat signals, resolve the single most-specific one.
-        val queries = analysis.places
-            .map { it.query.ifBlank { it.name } }
-            .filter { it.isNotBlank() }
-            .ifEmpty { listOfNotNull(analysis.locationSignals.firstOrNull()) }
-            .distinct()
+        val candidates = analysis.places
+            .filter { it.query.isNotBlank() || it.name.isNotBlank() }
+            .ifEmpty {
+                analysis.locationSignals.firstOrNull()?.let { listOf(PlaceQuery(name = it, query = it)) }
+                    ?: emptyList()
+            }
             .take(MAX_PLACES)
 
-        // LinkedHashMap → dedupe by canonical name, preserve the model's order.
-        val resolved = LinkedHashMap<String, ResolvedPlace>()
-        for (q in queries) {
-            val place = runCatching { placesTextSearch(q, key) }
-                .onFailure { Log.w(TAG, "places lookup failed for '$q': ${redactKey(it.message)}") }
-                .getOrNull() ?: continue
-            resolved.putIfAbsent(
-                place.displayName,
+        // One row per distinct model entry — the model already lists each item
+        // once ("merge only the same venue"), so we dedupe by NAME, not by Places
+        // place_id. Deduping by place_id collapsed genuinely-different branches
+        // ("오봉집" vs "오봉집 東大門店") when an under-specified query happened to
+        // resolve to the same prominent place. We only request `places.id` (the
+        // Essentials SKU); the name comes from the model and the exact place from a
+        // query_place_id deep link, so we never pay the Pro tier.
+        val resolved = mutableListOf<ResolvedPlace>()
+        val seenNames = HashSet<String>()
+        for (pq in candidates) {
+            val name  = pq.name.ifBlank { pq.query }
+            if (!seenNames.add(name.trim().lowercase())) continue   // exact repeat name
+            val query = pq.query.ifBlank { pq.name }
+            val placeId = runCatching { placesLookupId(query, key) }
+                .onFailure { Log.w(TAG, "places lookup failed for '$query': ${redactKey(it.message)}") }
+                .getOrNull() ?: continue                            // no Places match → skip
+            resolved.add(
                 ResolvedPlace(
-                    name    = place.displayName,
-                    address = place.formattedAddress,
-                    mapsUri = place.googleMapsUri,
+                    name    = name,
+                    area    = localityOf(name, query),
+                    mapsUri = googleMapsPlaceUri(name, placeId),
                 ),
             )
         }
-        Log.i(TAG, "resolveLocations queries=${queries.size} resolved=${resolved.size}")
-        return resolved.values.toList()
+        Log.i(TAG, "resolveLocations candidates=${candidates.size} resolved=${resolved.size}")
+        return resolved
     }
 
-    private suspend fun placesTextSearch(query: String, apiKey: String): PlaceResult? {
+    /** Resolves a text query to a Google Place ID via Text Search (New) at the
+     *  Essentials SKU (`places.id` only). Returns null on no match / error. */
+    private suspend fun placesLookupId(query: String, apiKey: String): String? {
         val response: JsonObject = httpClient.post(PLACES_SEARCH_URL) {
             contentType(ContentType.Application.Json)
             headers {
@@ -424,18 +439,23 @@ class SharedPostBodyFetcher(
         }.body()
 
         response["error"]?.let { Log.w(TAG, "places error: $it") }
-        val place = response["places"]?.jsonArray?.firstOrNull()?.jsonObject ?: return null
-        val location = place["location"]?.jsonObject
-        val lat = location?.get("latitude")?.jsonPrimitive?.content?.toDoubleOrNull()
-        val lng = location?.get("longitude")?.jsonPrimitive?.content?.toDoubleOrNull()
-        if (lat == null || lng == null) return null
-        return PlaceResult(
-            displayName = place["displayName"]?.jsonObject?.get("text")?.jsonPrimitive?.content ?: query,
-            formattedAddress = place["formattedAddress"]?.jsonPrimitive?.content ?: "",
-            latitude = lat,
-            longitude = lng,
-            googleMapsUri = place["googleMapsUri"]?.jsonPrimitive?.content,
-        )
+        return response["places"]?.jsonArray?.firstOrNull()?.jsonObject
+            ?.get("id")?.jsonPrimitive?.content
+            ?.takeIf { it.isNotBlank() }
+    }
+
+    /** Strips the venue [name] prefix off the model's "venue, area, city" query to
+     *  leave just the locality for the sheet's secondary line. */
+    private fun localityOf(name: String, query: String): String {
+        if (query == name) return ""
+        return query.removePrefix(name).trimStart(',', '，', '·', ' ').trim()
+    }
+
+    /** Google Maps deep link pinned to the exact resolved place by id; the query
+     *  is a human-readable fallback label. */
+    private fun googleMapsPlaceUri(name: String, placeId: String): String {
+        val q = java.net.URLEncoder.encode(name, Charsets.UTF_8.name())
+        return "https://www.google.com/maps/search/?api=1&query=$q&query_place_id=$placeId"
     }
 
     private fun List<String>.dedupe(): List<String> =
@@ -466,9 +486,10 @@ class SharedPostBodyFetcher(
     companion object {
         private const val TAG = "BodyFetcher"
         private const val MAX_BODY_CHARS        = 4000
-        // Upper bound on destinations resolved per post — caps Places calls for a
-        // long listicle while comfortably covering a "best N spots" post.
-        private const val MAX_PLACES            = 12
+        // Upper bound on destinations resolved per post — high enough to cover a
+        // "best 15 spots" listicle in full; still a backstop against a runaway
+        // response. Each resolved place is one Places call.
+        private const val MAX_PLACES            = 20
 
         // Crawler UA first (social apps gate real OG meta behind it); a real
         // browser UA is the retry for hosts that refuse the FB crawler.
@@ -482,8 +503,11 @@ class SharedPostBodyFetcher(
         private const val VISION_MODEL          = "gemini-2.5-flash"
 
         private const val PLACES_SEARCH_URL     = "https://places.googleapis.com/v1/places:searchText"
-        private const val PLACES_FIELD_MASK     =
-            "places.displayName,places.formattedAddress,places.location,places.googleMapsUri"
+        // Essentials (ID-only) SKU — the cheapest Text Search tier. Adding any of
+        // displayName / formattedAddress / location would bump every call to the
+        // pricier Pro tier; we get the name from the model and pin the exact place
+        // with a query_place_id deep link instead.
+        private const val PLACES_FIELD_MASK     = "places.id"
 
         // Parses Gemini's JSON image-analysis payload (responseMimeType=application/json).
         // Lenient: even in JSON mode the model occasionally emits trailing commas or

@@ -2,7 +2,6 @@ package com.luna.morningagent.data.sharedposts
 
 import android.util.Log
 import com.luna.morningagent.data.secure.TokenStore
-import java.util.UUID
 import kotlin.time.Clock
 import kotlinx.serialization.json.Json
 
@@ -36,10 +35,16 @@ class SharedPostsRepository(
      * Notion write already has the real post body instead of a bare URL,
      * which prevents `refreshFromNotion()` from later overwriting an
      * enriched local cache with Notion's stale URL.
+     *
+     * Idempotent on [localId]: the share worker generates one stable id per
+     * share and may re-run (retry on a network failure), so a second call with
+     * the same id returns the existing post instead of appending a duplicate.
      */
-    suspend fun save(rawText: String, subject: String?): SaveResult {
+    suspend fun save(rawText: String, subject: String?, localId: String): SaveResult {
         val trimmed = rawText.trim()
         if (trimmed.isEmpty()) return SaveResult.EmptyInput
+
+        readCache().firstOrNull { it.localId == localId }?.let { return SaveResult.SavedPending(it) }
 
         val rawUrl = extractFirstUrl(trimmed)
         val url    = rawUrl?.let { cleanTrackingParams(it) }
@@ -56,7 +61,7 @@ class SharedPostsRepository(
             ?: url?.let { authorFromUrl(it) }
 
         val post = SharedPost(
-            localId               = UUID.randomUUID().toString(),
+            localId               = localId,
             content               = content,
             source                = source,
             author                = author,
@@ -374,6 +379,16 @@ class SharedPostsRepository(
      */
     fun updateLocations(localId: String, places: List<ResolvedPlace>) {
         if (places.isEmpty()) return
+        updateCache(localId) { it.copy(locations = places) }
+    }
+
+    /**
+     * Overwrite a post's resolved places — including with an empty list, which
+     * [updateLocations] refuses (it guards against the resolver clobbering good
+     * data with a no-match). Used by the user's manual delete-place action, where
+     * removing the last place legitimately clears the pin.
+     */
+    fun setLocations(localId: String, places: List<ResolvedPlace>) {
         updateCache(localId) { it.copy(locations = places) }
     }
 

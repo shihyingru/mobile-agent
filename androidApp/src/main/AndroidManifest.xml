@@ -2,6 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Read connectivity so the share enrich worker can detect offline and retry -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- Phase 2 step 4: WorkManager → notification at the user's chosen briefing time -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 

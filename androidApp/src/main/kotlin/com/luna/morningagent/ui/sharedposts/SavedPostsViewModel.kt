@@ -6,12 +6,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.work.WorkManager
 import com.luna.morningagent.data.notion.NotionConfigMissingException
 import com.luna.morningagent.data.secure.TokenStore
+import com.luna.morningagent.data.sharedposts.ResolvedPlace
 import com.luna.morningagent.data.sharedposts.SharedPost
 import com.luna.morningagent.data.sharedposts.SharedPostsNotionClient
 import com.luna.morningagent.data.sharedposts.SharedPostsRepository
 import com.luna.morningagent.ui.settings.extractNotionDatabaseId
+import com.luna.morningagent.worker.SharedPostEnrichWorker
 import kotlinx.coroutines.launch
 
 /**
@@ -57,11 +60,26 @@ class SavedPostsViewModel(application: Application) : AndroidViewModel(applicati
 
     init {
         refresh()
+        observeEnrichWork()
     }
 
     fun refresh() {
         posts = repo.listAll()
         dbId  = tokenStore.getSharedPostsDbId()
+    }
+
+    /**
+     * Re-read the cache whenever a share-enrich job changes state, so a post's
+     * body / image / location appears as soon as the background worker finishes
+     * — including a retry that completes minutes later once the network is back —
+     * without the user having to pull-to-refresh.
+     */
+    private fun observeEnrichWork() {
+        viewModelScope.launch {
+            WorkManager.getInstance(getApplication())
+                .getWorkInfosByTagFlow(SharedPostEnrichWorker.TAG)
+                .collect { refresh() }
+        }
     }
 
     /**
@@ -113,9 +131,16 @@ class SavedPostsViewModel(application: Application) : AndroidViewModel(applicati
     val pendingSyncCount: Int
         get() = posts.count { it.pendingSync }
 
-    // Locations are resolved once at share time (SharedPostEnrichWorker) and
-    // stored on the post; the Saved card reads post.locations directly and opens
-    // the map (or a places sheet) on tap — no on-demand resolve here.
+    // Locations are resolved once at share time (the share workers) and stored on
+    // the post; the Saved card reads post.locations directly and opens the map
+    // (or a places sheet) on tap — no on-demand resolve here.
+
+    /** Remove one resolved place from a post — manual cleanup of a wrong or
+     *  irrelevant pin from the places sheet. Clearing the last one hides the pin. */
+    fun deletePlace(post: SharedPost, place: ResolvedPlace) {
+        repo.setLocations(post.localId, post.locations.filterNot { it == place })
+        refresh()
+    }
 
     // --- Delete -------------------------------------------------------------
 
