@@ -93,6 +93,7 @@ fun SettingsScreen(
         onModelChange          = vm::setSelectedModel,
         onGeminiDraftChange    = vm::updateGeminiDraft,
         onClaudeDraftChange    = vm::updateClaudeDraft,
+        onPlacesDraftChange    = vm::updatePlacesDraft,
         onNotionDraftChange    = vm::updateNotionDraft,
         onDatabaseDraftChange  = vm::updateDatabaseDraft,
         onLanguageChange       = vm::setAppLanguage,
@@ -119,6 +120,7 @@ private fun SettingsScreenContent(
     onModelChange: (String) -> Unit,
     onGeminiDraftChange: (String) -> Unit,
     onClaudeDraftChange: (String) -> Unit,
+    onPlacesDraftChange: (String) -> Unit,
     onNotionDraftChange: (String) -> Unit,
     onDatabaseDraftChange: (String) -> Unit,
     onLanguageChange: (String) -> Unit,
@@ -146,6 +148,7 @@ private fun SettingsScreenContent(
 
     val hasChanges = uiState.geminiDraft.isNotEmpty() ||
         uiState.claudeDraft.isNotEmpty() ||
+        uiState.placesDraft.isNotEmpty() ||
         uiState.notionDraft.isNotEmpty() ||
         uiState.databaseDraft != uiState.savedDatabaseId
 
@@ -256,6 +259,22 @@ private fun SettingsScreenContent(
                     keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(androidx.compose.ui.focus.FocusDirection.Down) }),
                 )
             }
+
+            // Optional — only the saved-posts "find location" action uses it.
+            // The feature degrades to a "no location" toast when it's unset.
+            SettingsInput(
+                label           = stringResource(R.string.settings_field_places),
+                value           = uiState.placesDraft,
+                onValueChange   = onPlacesDraftChange,
+                placeholder     = uiState.placesSavedLast4?.let { "••••$it" }
+                                   ?: stringResource(R.string.settings_field_places),
+                secret          = true,
+                keyboardOptions = KeyboardOptions(
+                    capitalization = KeyboardCapitalization.None,
+                    imeAction      = ImeAction.Next,
+                ),
+                keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(androidx.compose.ui.focus.FocusDirection.Down) }),
+            )
 
             SettingsInput(
                 label           = stringResource(R.string.settings_field_notion),
@@ -713,6 +732,7 @@ private fun SettingsEmptyPreview() {
             onModelChange          = {},
             onGeminiDraftChange    = {},
             onClaudeDraftChange    = {},
+            onPlacesDraftChange    = {},
             onNotionDraftChange    = {},
             onDatabaseDraftChange  = {},
             onLanguageChange       = {},
@@ -740,6 +760,7 @@ private fun SettingsSavedPreview() {
                 selectedModelId  = ClaudeModelOption.Sonnet.id,
                 geminiSavedLast4 = "k7Qa",
                 claudeSavedLast4 = "j3xP",
+                placesSavedLast4 = "5tWm",
                 notionSavedLast4 = "9F2c",
                 savedDatabaseId  = "abc123def456789012345678901234ab",
                 databaseDraft    = "abc123def456789012345678901234ab",
@@ -749,6 +770,7 @@ private fun SettingsSavedPreview() {
             onModelChange          = {},
             onGeminiDraftChange    = {},
             onClaudeDraftChange    = {},
+            onPlacesDraftChange    = {},
             onNotionDraftChange    = {},
             onDatabaseDraftChange  = {},
             onLanguageChange       = {},

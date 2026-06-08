@@ -6,27 +6,28 @@ import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
 import com.luna.morningagent.data.secure.TokenStore
-import com.luna.morningagent.data.sharedposts.SaveResult
-import com.luna.morningagent.data.sharedposts.SharedPostBodyFetcher
-import com.luna.morningagent.data.sharedposts.SharedPostCategorizer
 import com.luna.morningagent.data.sharedposts.SharedPostsRepository
+import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 /**
  * Lightweight receiver for ACTION_SEND text/plain shares from any app.
  *
- * No UI — Theme.NoDisplay in the manifest means the activity never shows a
- * window, so Luna stays inside the source app (Threads, Twitter, etc.) while
- * the post is cached and (when configured) mirrored to Notion in the
- * background. A single Toast confirms the save.
+ * No UI — Theme.NoDisplay means the activity never shows a window, so Luna stays
+ * inside the source app. A NoDisplay activity MUST finish() inside onCreate, so
+ * this does the minimum here: append the post to the local cache (no network)
+ * and finish immediately.
  *
- * Coroutine scope is tied to the application context, not this activity —
- * `finish()` fires immediately after dispatching the save, so an activity-
- * scoped scope would be cancelled before the Notion write completes.
+ * All network enrichment — body + og:image scrape, AI body fallback, categorize,
+ * location resolve, Notion sync — runs in
+ * [com.luna.morningagent.ui.sharedposts.SavedPostsViewModel.resolvePending] when
+ * the app is next opened. That's deliberate: Android blocks an app's *background*
+ * network on metered connections under Battery Saver / restricted background
+ * data (a background worker just fails DNS), but foreground is exempt. Posts are
+ * saved with `pendingEnrich = true`; the Saved screen enriches them on open.
  */
 class ShareReceiverActivity : Activity() {
 
@@ -35,7 +36,7 @@ class ShareReceiverActivity : Activity() {
 
         val rawText = intent?.getStringExtra(Intent.EXTRA_TEXT)?.trim().orEmpty()
         val subject = intent?.getStringExtra(Intent.EXTRA_SUBJECT)
-        Log.i("ShareReceiver", "intent EXTRA_TEXT=\"$rawText\" EXTRA_SUBJECT=\"$subject\"")
+        Log.i(TAG, "intent EXTRA_TEXT=\"$rawText\" EXTRA_SUBJECT=\"$subject\"")
 
         if (rawText.isEmpty()) {
             Toast.makeText(this, R.string.share_saved_failed_toast, Toast.LENGTH_SHORT).show()
@@ -45,83 +46,22 @@ class ShareReceiverActivity : Activity() {
 
         val appContext = applicationContext
         val tokenStore = TokenStore(appContext)
-        val repo = SharedPostsRepository(tokenStore)
-        val categorizer = SharedPostCategorizer(tokenStore)
-        val bodyFetcher = SharedPostBodyFetcher(tokenStore)
+        val repo       = SharedPostsRepository(tokenStore)
 
-        // App-scoped coroutine so the save + categorization survive the
-        // immediate finish() — the activity is gone but the work runs to
-        // completion in the same process.
-        appScope.launch {
-            val result = runCatching { repo.save(rawText, subject) }.getOrNull()
+        val hasDb    = tokenStore.getSharedPostsDbId() != null
+        val toastRes = if (hasDb) R.string.share_saved_toast else R.string.share_saved_pending_toast
+        Toast.makeText(appContext, toastRes, Toast.LENGTH_SHORT).show()
 
-            // Toast picks copy from the DB-configured state (not the save
-            // result — Notion sync is now deferred until after body enrichment,
-            // so its outcome isn't known yet).
-            val hasDb = tokenStore.getSharedPostsDbId() != null
-            val toastRes = when (result) {
-                is SaveResult.SavedPending  ->
-                    if (hasDb) R.string.share_saved_toast
-                    else       R.string.share_saved_pending_toast
-                SaveResult.EmptyInput, null -> R.string.share_saved_failed_toast
-            }
-            withContext(Dispatchers.Main) {
-                Toast.makeText(appContext, toastRes, Toast.LENGTH_SHORT).show()
-            }
-
-            val saved = result?.post ?: return@launch
-
-            // 1. Enrich from the URL when there's one. Threads/X/Instagram
-            //    intents carry only the URL — scrape og:description (with a
-            //    Gemini url_context fallback) so the cache (and later Notion)
-            //    sees the real post body, not a bare URL. Also grab og:image
-            //    so the Saved card can render a bookmark-style thumbnail.
-            val enriched = run {
-                if (saved.url == null) return@run saved
-                val needsBody = saved.content == saved.url || saved.content.length < 80
-                val meta = runCatching { bodyFetcher.fetch(saved.url) }.getOrNull()
-                    ?: return@run saved
-
-                var working = saved
-                if (needsBody && !meta.body.isNullOrBlank()) {
-                    repo.updateContent(saved.localId, meta.body)
-                    working = working.copy(content = meta.body)
-                }
-                if (!meta.imageUrl.isNullOrBlank()) {
-                    repo.updateImageUrl(saved.localId, meta.imageUrl)
-                    working = working.copy(imageUrl = meta.imageUrl)
-                }
-                working
-            }
-
-            // 2. NOW push to Notion. createPage carries the enriched content
-            //    so Notion's first write isn't a bare URL — important because
-            //    refreshFromNotion() treats Notion as source-of-truth on
-            //    content and would otherwise overwrite the local body back to
-            //    the URL on the next Saved-screen entry.
-            repo.syncToNotion(enriched.localId)
-
-            // 3. Categorize. applyCategorization writes categories + summary
-            //    into the cache and patches the (now-existing) Notion page.
-            val categories = categorizer.categorize(
-                post               = enriched,
-                existingCategories = tokenStore.getSharedPostsCategories(),
-            )
-            if (categories != null) {
-                repo.applyCategorization(
-                    localId    = enriched.localId,
-                    categories = categories.categories,
-                    summary    = categories.summary.ifBlank { null },
-                )
-            }
-        }
+        // Save only — local cache write, no network. Quick enough to complete
+        // before the process is backgrounded; the shared in-memory cache makes it
+        // visible to the Saved screen immediately.
+        scope.launch { repo.save(rawText, subject, UUID.randomUUID().toString()) }
 
         finish()
     }
 
     companion object {
-        // Process-wide SupervisorJob so one failed save doesn't kill the pipeline
-        // for subsequent shares within the same app process.
-        private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        private const val TAG = "ShareReceiver"
+        private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     }
 }

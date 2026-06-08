@@ -1,11 +1,13 @@
 package com.luna.morningagent.data.sharedposts
 
 import android.text.Html
+import android.util.Base64
 import android.util.Log
 import com.luna.morningagent.data.secure.TokenStore
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.engine.okhttp.OkHttp
+import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.get
 import io.ktor.client.request.headers
@@ -14,10 +16,11 @@ import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
+import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.add
 import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
@@ -75,7 +78,7 @@ class SharedPostBodyFetcher(
         // whatever scrape returned (often non-null even when og:description is
         // empty for image-only posts).
         val ai = runCatching { aiExtract(url) }
-            .onFailure { Log.w(TAG, "aiExtract failed: ${it.message}") }
+            .onFailure { Log.w(TAG, "aiExtract failed: ${redactKey(it.message)}") }
             .getOrNull()
         Log.i(TAG, "aiExtract result len=${ai?.length ?: 0} preview=${ai?.take(120)}")
         return FetchedOgMeta(body = ai, imageUrl = scraped.imageUrl)
@@ -85,16 +88,16 @@ class SharedPostBodyFetcher(
 
     private suspend fun scrape(url: String): ScrapeResult {
         // Threads, X, Instagram return JS-only shells (no meta tags) to browser
-        // UAs but serve real OG meta to known crawlers. Pose as facebookexternalhit
-        // so og:description holds the actual post body.
-        val html: String = httpClient.get(url) {
-            headers {
-                append("User-Agent",
-                    "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)")
-                append("Accept", "text/html,application/xhtml+xml")
-                append("Accept-Language", "en;q=0.9,zh;q=0.8")
-            }
-        }.bodyAsText()
+        // UAs but serve real OG meta to known crawlers, so try facebookexternalhit
+        // first. If that's refused — some hosts 403 / redirect the FB crawler
+        // (Wikipedia, a few news sites) — retry once as a real browser so the OG
+        // meta (caption AND image) gets a genuine second chance instead of being
+        // lost to a silently-parsed error page. Throws when neither UA yields 2xx
+        // HTML; fetch() logs that as a scrape failure and falls through to the AI
+        // body recovery.
+        val html = fetchHtml(url, CRAWLER_UA)
+            ?: fetchHtml(url, BROWSER_UA)
+            ?: error("no 2xx HTML for $url")
 
         val bodyCandidates = listOfNotNull(
             META_OG_DESCRIPTION.find(html)?.groupValues?.getOrNull(1),
@@ -117,6 +120,28 @@ class SharedPostBodyFetcher(
             ?.takeIf { it.startsWith("http") }
 
         return ScrapeResult(body = body, imageUrl = imageUrl)
+    }
+
+    /**
+     * GET [url] with the given [ua] and return the HTML only on a 2xx response.
+     * A non-2xx (the FB crawler getting 403'd, or a redirect surfacing as 4xx/5xx)
+     * returns null + a log line instead of being parsed as if it were the real
+     * page — that silent parse of an error body was why a blocked scrape looked
+     * like "the post simply has no image".
+     */
+    private suspend fun fetchHtml(url: String, ua: String): String? {
+        val response = httpClient.get(url) {
+            headers {
+                append("User-Agent", ua)
+                append("Accept", "text/html,application/xhtml+xml")
+                append("Accept-Language", "en;q=0.9,zh;q=0.8")
+            }
+        }
+        if (!response.status.isSuccess()) {
+            Log.w(TAG, "scrape ${response.status.value} ua=${ua.substringBefore('/')} url=$url")
+            return null
+        }
+        return response.bodyAsText()
     }
 
     private data class ScrapeResult(val body: String?, val imageUrl: String?)
@@ -170,6 +195,306 @@ class SharedPostBodyFetcher(
         }
     }
 
+    // --- Phase 1b: multimodal image cross-analysis -------------------------
+
+    /**
+     * Cross-analyses the post [imageUrl] against its scraped [body] via Gemini
+     * multimodal: OCR + landmark + scene type, reconciled into deduplicated
+     * location signals. Caller-driven — never invoked from [fetch]. Only call
+     * when scrape returned a non-blank body (this enriches a successful scrape;
+     * it is not a body-recovery substitute for the Phase 2 fallback).
+     *
+     * Gemini takes image *bytes*, not a URL, so we download the image through
+     * the same client and send it as base64 `inline_data`. Returns null on a
+     * missing key, download/network error, or unparseable model output.
+     */
+    suspend fun analyzeImage(body: String?, imageUrl: String): ImageAnalysisResult? {
+        val token = tokenStore.getGeminiKey()
+        if (token == null) { Log.w(TAG, "analyzeImage: no Gemini key"); return null }
+        return runCatching {
+            val (bytes, mime) = downloadImage(imageUrl)
+            Log.i(TAG, "analyzeImage img bytes=${bytes.size} mime=$mime")
+            val response: JsonObject = httpClient.post(
+                "$GEMINI_API_BASE/models/$VISION_MODEL:generateContent?key=$token",
+            ) {
+                contentType(ContentType.Application.Json)
+                setBody(buildImageAnalysisBody(body, bytes, mime))
+            }.body()
+            response["error"]?.let { Log.w(TAG, "analyzeImage gemini error: $it"); return@runCatching null }
+            val text = firstCandidateText(response) ?: run {
+                Log.w(TAG, "analyzeImage: no candidate text"); return@runCatching null
+            }
+            // Strict parse first; on any malformation (the model occasionally
+            // emits unescaped chars in the mixed CJK/emoji text), salvage just the
+            // locationSignals array — the only field the resolver consumes.
+            val parsed = runCatching { analysisJson.decodeFromString<ImageAnalysisResult>(text) }
+                .getOrElse {
+                    Log.w(TAG, "analyzeImage strict parse failed (${it.message}); salvaging signals")
+                    ImageAnalysisResult(locationSignals = salvageSignals(text))
+                }
+            // A confidently-named landmark is a location signal too — fold it in so
+            // it isn't lost when the model puts it only in the landmark field.
+            val signals = (parsed.locationSignals + listOfNotNull(parsed.landmark)).dedupe()
+            Log.i(TAG, "analyzeImage places=${parsed.places.map { it.name }} signals=$signals landmark=${parsed.landmark}")
+            parsed.copy(locationSignals = signals)
+        }.onFailure { Log.w(TAG, "analyzeImage failed: ${redactKey(it.message)}") }.getOrNull()
+    }
+
+    /**
+     * Best-effort extraction of the `locationSignals` array when the model emits
+     * JSON the strict parser rejects. Pulls the array body, then every quoted
+     * string inside it — good enough to keep the resolver working off a partial
+     * or slightly-malformed response instead of discarding everything.
+     */
+    private fun salvageSignals(text: String): List<String> {
+        val start = LOCATION_SIGNALS_KEY.find(text) ?: return emptyList()
+        // Take everything after the opening "[" up to the closing "]" if present,
+        // else the whole tail (truncated response). QUOTED_STRING only matches
+        // fully-closed strings, so a partial trailing element is dropped cleanly.
+        val body = text.substring(start.range.last + 1).substringBefore(']')
+        return QUOTED_STRING.findAll(body).map { it.groupValues[1] }.toList()
+    }
+
+    /**
+     * Text-only location-signal extraction from a post caption. Cheaper, faster
+     * and far less error-prone than the image path (no base64 image, smaller
+     * response, no 503-magnet vision load), so [resolvePostLocations] runs it
+     * first. Returns an empty list on a missing key, model error, or no signals.
+     */
+    suspend fun analyzeText(content: String): ImageAnalysisResult? {
+        val token = tokenStore.getGeminiKey()
+        if (token == null) { Log.w(TAG, "analyzeText: no Gemini key"); return null }
+        return runCatching {
+            val response: JsonObject = httpClient.post(
+                "$GEMINI_API_BASE/models/$VISION_MODEL:generateContent?key=$token",
+            ) {
+                contentType(ContentType.Application.Json)
+                setBody(buildTextSignalsBody(content))
+            }.body()
+            response["error"]?.let { Log.w(TAG, "analyzeText gemini error: $it"); return@runCatching null }
+            val text = firstCandidateText(response) ?: return@runCatching null
+            val parsed = runCatching { analysisJson.decodeFromString<ImageAnalysisResult>(text) }
+                .getOrElse { ImageAnalysisResult(locationSignals = salvageSignals(text)) }
+            val signals = (parsed.locationSignals + listOfNotNull(parsed.landmark)).dedupe()
+            Log.i(TAG, "analyzeText places=${parsed.places.map { it.name }} signals=$signals")
+            parsed.copy(locationSignals = signals)
+        }.onFailure { Log.w(TAG, "analyzeText failed: ${redactKey(it.message)}") }.getOrNull()
+    }
+
+    private fun buildTextSignalsBody(content: String): JsonObject = buildJsonObject {
+        putJsonObject("generationConfig") {
+            // Temperature 0 — deterministic, exhaustive extraction (was skipping
+            // items / varying the count run-to-run at 0.2).
+            put("temperature", 0)
+            put("maxOutputTokens", 2048)
+            put("responseMimeType", "application/json")
+            putJsonObject("thinkingConfig") { put("thinkingBudget", 0) }
+        }
+        putJsonArray("contents") {
+            addJsonObject {
+                put("role", "user")
+                putJsonArray("parts") {
+                    addJsonObject { put("text", textSignalsPrompt(content)) }
+                }
+            }
+        }
+    }
+
+    private fun textSignalsPrompt(content: String): String = buildString {
+        appendLine("Extract concrete location signals from this social-media post caption.")
+        appendLine("Return \"places\": EVERY distinct real-world destination the post recommends or is about — restaurants, cafés, shops, landmarks. If the post is a numbered or bulleted list, include ALL items in their original order and DO NOT skip any. For each, give a short \"name\" and a complete geocodable \"query\" of the form \"venue, neighbourhood, city\" (e.g. \"Hippo, Yeonnam-dong, Seoul\") so a bare name isn't matched to the wrong city.")
+        appendLine("Only merge two entries when they are clearly the SAME venue. Treat different branches of one brand as SEPARATE places, and put each branch's distinguishing detail (its district or branch name) into that entry's query so they resolve to different locations. Do NOT add a bare city, district, or country as its own place — use those only inside each query. Return at most 20. Empty array if no specific place is mentioned.")
+        appendLine()
+        appendLine("Respond with ONLY this JSON object — no markdown, no commentary:")
+        appendLine("""{"places": [{"name": string, "query": string}], "locationSignals": string[]}""")
+        appendLine()
+        appendLine("Caption:")
+        append(content)
+    }
+
+    private suspend fun downloadImage(url: String): Pair<ByteArray, String> {
+        val response = httpClient.get(url)
+        val mime = response.contentType()
+            ?.let { "${it.contentType}/${it.contentSubtype}" }
+            ?: "image/jpeg"
+        return response.body<ByteArray>() to mime
+    }
+
+    private fun buildImageAnalysisBody(
+        body: String?,
+        imageBytes: ByteArray,
+        mimeType: String,
+    ): JsonObject = buildJsonObject {
+        putJsonObject("generationConfig") {
+            // Temperature 0 — deterministic, exhaustive extraction.
+            put("temperature", 0)
+            put("maxOutputTokens", 2048)
+            put("responseMimeType", "application/json")
+            // gemini-2.5-flash is a thinking model: left on, it spends the output
+            // budget on hidden reasoning and truncates the JSON mid-array. This is
+            // a deterministic extraction, not a reasoning task — turn thinking off
+            // so the whole budget goes to the response.
+            putJsonObject("thinkingConfig") { put("thinkingBudget", 0) }
+        }
+        putJsonArray("contents") {
+            addJsonObject {
+                put("role", "user")
+                putJsonArray("parts") {
+                    addJsonObject { put("text", imageAnalysisPrompt(body)) }
+                    addJsonObject {
+                        putJsonObject("inline_data") {
+                            put("mime_type", mimeType)
+                            put("data", Base64.encodeToString(imageBytes, Base64.NO_WRAP))
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private fun imageAnalysisPrompt(body: String?): String = buildString {
+        appendLine("You are extracting location clues from an image attached to a social-media post.")
+        appendLine("Read any text in the image (signs, menus, banners) and note any recognisable landmark or named venue, then combine those with the post body text below.")
+        appendLine("Return \"places\": EVERY distinct real-world destination identifiable from the image and caption — restaurants, cafés, shops, landmarks. If the caption is a numbered or bulleted list, include ALL items in their original order and DO NOT skip any. For each, give a short \"name\" and a complete geocodable \"query\" of the form \"venue, neighbourhood, city\" (e.g. \"Hippo, Yeonnam-dong, Seoul\") so a bare name isn't matched to the wrong city.")
+        appendLine("Only merge two entries when they are clearly the SAME venue. Treat different branches of one brand as SEPARATE places, and put each branch's distinguishing detail (its district or branch name) into that entry's query so they resolve to different locations. Do NOT add a bare city, district, or country as its own place — use those only inside each query. Return at most 20. Empty array if none.")
+        appendLine()
+        appendLine("Respond with ONLY this JSON object — no markdown, no commentary, and DO NOT dump the raw OCR text:")
+        appendLine("""{"places": [{"name": string, "query": string}], "locationSignals": string[], "landmark": string|null}""")
+        appendLine()
+        appendLine("Post body text:")
+        append(body?.takeIf { it.isNotBlank() } ?: "(none)")
+    }
+
+    // --- Location resolution: Google Places Text Search --------------------
+
+    /**
+     * Resolves ALL of a post's places once, at share time. Text-first: pulls the
+     * destination list from the caption [content] via the cheap [analyzeText]
+     * path; only when the text yields nothing does it pay for image OCR
+     * ([analyzeImage]). Each destination's geocodable query is resolved to a real
+     * place via Google Places, deduped by canonical name and capped.
+     *
+     * Returns an empty list when the Places key is missing, no destination is
+     * found, or none resolve — the caller persists it and the card hides the pin.
+     * Never throws.
+     */
+    suspend fun resolvePostLocations(content: String?, imageUrl: String?): List<ResolvedPlace> {
+        val key = tokenStore.getGooglePlacesKey()
+        if (key == null) { Log.w(TAG, "resolveLocations: no Places key"); return emptyList() }
+
+        // Text-first. But for an image post with a thin caption, the venue name is
+        // usually on the storefront, not in the few words of text — so ALSO OCR
+        // the image when the text found no place or the caption is too short to
+        // name one, and put the image's places first (signage = the real name).
+        // Long captions (listicles) stay text-only, so no extra vision cost.
+        val text       = content?.takeIf { it.isNotBlank() }?.let { analyzeText(it) }
+        val textPlaces = text?.places.orEmpty()
+        val captionShort = (content?.length ?: 0) < SHORT_CAPTION_CHARS
+        val image = if (imageUrl != null && (textPlaces.isEmpty() || captionShort)) {
+            imageUrl.let { analyzeImage(content, it) }
+        } else {
+            null
+        }
+
+        // Prefer the image's places when image OCR ran and found any: analyzeImage
+        // is given the caption too, so its result already reflects both the photo
+        // (storefront name) AND the text — and it skips the vague descriptions the
+        // text-only pass mistakes for venues (e.g. "Singapore ice-cream cookie
+        // shop"). Fall back to the text's places only when the image found none.
+        val places = (image?.places?.takeIf { it.isNotEmpty() } ?: textPlaces)
+            .filter { it.query.isNotBlank() || it.name.isNotBlank() }
+            .distinctBy { (it.name.ifBlank { it.query }).trim().lowercase() }
+
+        // If a malformed model response left only salvaged flat signals, resolve
+        // the single most-specific one.
+        val candidates = places
+            .ifEmpty {
+                val signals = text?.locationSignals.orEmpty().ifEmpty { image?.locationSignals.orEmpty() }
+                signals.firstOrNull()?.let { listOf(PlaceQuery(name = it, query = it)) } ?: emptyList()
+            }
+            .take(MAX_PLACES)
+        if (candidates.isEmpty()) return emptyList()
+
+        // One row per distinct model entry — the model already lists each item
+        // once ("merge only the same venue"), so we dedupe by NAME, not by Places
+        // place_id. Deduping by place_id collapsed genuinely-different branches
+        // ("오봉집" vs "오봉집 東大門店") when an under-specified query happened to
+        // resolve to the same prominent place. We only request `places.id` (the
+        // Essentials SKU); the name comes from the model and the exact place from a
+        // query_place_id deep link, so we never pay the Pro tier.
+        val resolved = mutableListOf<ResolvedPlace>()
+        val seenNames = HashSet<String>()
+        for (pq in candidates) {
+            val name  = pq.name.ifBlank { pq.query }
+            if (!seenNames.add(name.trim().lowercase())) continue   // exact repeat name
+            val query = pq.query.ifBlank { pq.name }
+            val placeId = runCatching { placesLookupId(query, key) }
+                .onFailure { Log.w(TAG, "places lookup failed for '$query': ${redactKey(it.message)}") }
+                .getOrNull() ?: continue                            // no Places match → skip
+            resolved.add(
+                ResolvedPlace(
+                    name    = name,
+                    area    = localityOf(name, query),
+                    mapsUri = googleMapsPlaceUri(name, placeId),
+                ),
+            )
+        }
+        Log.i(TAG, "resolveLocations candidates=${candidates.size} resolved=${resolved.size}")
+        return resolved
+    }
+
+    /** Resolves a text query to a Google Place ID via Text Search (New) at the
+     *  Essentials SKU (`places.id` only). Returns null on no match / error. */
+    private suspend fun placesLookupId(query: String, apiKey: String): String? {
+        val response: JsonObject = httpClient.post(PLACES_SEARCH_URL) {
+            contentType(ContentType.Application.Json)
+            headers {
+                append("X-Goog-Api-Key", apiKey)
+                append("X-Goog-FieldMask", PLACES_FIELD_MASK)
+            }
+            setBody(buildJsonObject { put("textQuery", query) })
+        }.body()
+
+        response["error"]?.let { Log.w(TAG, "places error: $it") }
+        return response["places"]?.jsonArray?.firstOrNull()?.jsonObject
+            ?.get("id")?.jsonPrimitive?.content
+            ?.takeIf { it.isNotBlank() }
+    }
+
+    /** Strips the venue [name] prefix off the model's "venue, area, city" query to
+     *  leave just the locality for the sheet's secondary line. */
+    private fun localityOf(name: String, query: String): String {
+        if (query == name) return ""
+        return query.removePrefix(name).trimStart(',', '，', '·', ' ').trim()
+    }
+
+    /** Google Maps deep link pinned to the exact resolved place by id; the query
+     *  is a human-readable fallback label. */
+    private fun googleMapsPlaceUri(name: String, placeId: String): String {
+        val q = java.net.URLEncoder.encode(name, Charsets.UTF_8.name())
+        return "https://www.google.com/maps/search/?api=1&query=$q&query_place_id=$placeId"
+    }
+
+    private fun List<String>.dedupe(): List<String> =
+        map { it.trim() }.filter { it.isNotBlank() }.distinct()
+
+    /** Strip a `key=<token>` query param out of an error message before logging —
+     *  Ktor embeds the full request URL (including the Gemini API key) in timeout
+     *  / failure exception messages. */
+    private fun redactKey(message: String?): String =
+        message.orEmpty().replace(Regex("key=[A-Za-z0-9_-]+"), "key=***")
+
+    private fun firstCandidateText(response: JsonObject): String? =
+        response["candidates"]
+            ?.jsonArray?.firstOrNull()
+            ?.jsonObject?.get("content")
+            ?.jsonObject?.get("parts")
+            ?.jsonArray?.firstOrNull()
+            ?.jsonObject?.get("text")
+            ?.jsonPrimitive?.content
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+
     // --- HTML helpers -------------------------------------------------------
 
     private fun decodeHtmlEntities(raw: String): String =
@@ -178,8 +503,47 @@ class SharedPostBodyFetcher(
     companion object {
         private const val TAG = "BodyFetcher"
         private const val MAX_BODY_CHARS        = 4000
+        // Upper bound on destinations resolved per post — high enough to cover a
+        // "best 15 spots" listicle in full; still a backstop against a runaway
+        // response. Each resolved place is one Places call.
+        private const val MAX_PLACES            = 20
+        // Captions shorter than this are treated as image-primary posts: the
+        // venue name is likely on the storefront in the photo, so OCR the image
+        // even if the text yielded a (probably generic) place.
+        private const val SHORT_CAPTION_CHARS   = 80
+
+        // Crawler UA first (social apps gate real OG meta behind it); a real
+        // browser UA is the retry for hosts that refuse the FB crawler.
+        private const val CRAWLER_UA =
+            "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)"
+        private const val BROWSER_UA =
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+                "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
         private const val GEMINI_API_BASE       = "https://generativelanguage.googleapis.com/v1beta"
         private const val AI_FALLBACK_MODEL     = "gemini-2.5-flash"
+        private const val VISION_MODEL          = "gemini-2.5-flash"
+
+        private const val PLACES_SEARCH_URL     = "https://places.googleapis.com/v1/places:searchText"
+        // Essentials (ID-only) SKU — the cheapest Text Search tier. Adding any of
+        // displayName / formattedAddress / location would bump every call to the
+        // pricier Pro tier; we get the name from the model and pin the exact place
+        // with a query_place_id deep link instead.
+        private const val PLACES_FIELD_MASK     = "places.id"
+
+        // Parses Gemini's JSON image-analysis payload (responseMimeType=application/json).
+        // Lenient: even in JSON mode the model occasionally emits trailing commas or
+        // unquoted tokens in mixed CJK/emoji text. A hard parse failure here used to
+        // silently drop every location signal (see salvageSignals for the backstop).
+        private val analysisJson = Json {
+            ignoreUnknownKeys = true
+            allowTrailingComma = true
+            isLenient = true
+        }
+
+        // Salvage parsing — locate the locationSignals array opener, then pull the
+        // quoted strings that follow (works even if the array was never closed).
+        private val LOCATION_SIGNALS_KEY = Regex(""""locationSignals"\s*:\s*\[""")
+        private val QUOTED_STRING = Regex(""""((?:[^"\\]|\\.)*)"""")
 
         // Both `property` and `name` are seen in the wild; quote chars vary too.
         private val META_OG_DESCRIPTION = Regex(
@@ -213,6 +577,15 @@ class SharedPostBodyFetcher(
             install(ContentNegotiation) {
                 json(Json { ignoreUnknownKeys = true })
             }
+            // OkHttp defaults to a ~10s socket timeout — too short for a Gemini
+            // vision call carrying a base64 image, which was timing out before it
+            // could return any location signals. Generous ceilings; the fast
+            // scrape / Notion calls finish well under them.
+            install(HttpTimeout) {
+                connectTimeoutMillis = 15_000
+                requestTimeoutMillis = 60_000
+                socketTimeoutMillis  = 60_000
+            }
         }
     }
 }
@@ -223,4 +596,9 @@ data class FetchedOgMeta(
     val body: String? = null,
     /** First absolute http(s) image URL from `og:image` / `twitter:image`. */
     val imageUrl: String? = null,
+    /**
+     * Multimodal cross-analysis of [imageUrl] vs [body]. Null until the caller
+     * runs [SharedPostBodyFetcher.analyzeImage] — never populated by [fetch].
+     */
+    val imageAnalysis: ImageAnalysisResult? = null,
 )

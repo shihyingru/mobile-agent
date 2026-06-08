@@ -22,12 +22,22 @@ data class SharedPost(
     val author: String? = null,           // From EXTRA_SUBJECT or URL path; null when unknown
     val url: String? = null,              // First URL in the shared text; null for pure-text shares
     val imageUrl: String? = null,         // og:image / twitter:image from the body fetcher; signed CDN URL — treat as ephemeral
+    // Places resolved once at share time (text-first, image-fallback → Places).
+    // Local-only — Notion doesn't store these; refreshFromNotion preserves them.
+    // Empty = no location found → the Saved card hides the map pin. One entry =
+    // tap opens it directly; several = tap opens a places bottom sheet.
+    val locations: List<ResolvedPlace> = emptyList(),
     val categories: List<String> = emptyList(),
     val summary: String? = null,
     val savedAt: Instant,
     val status: String = STATUS_UNREAD,
     val pendingSync: Boolean = false,
     val pendingCategorization: Boolean = true,
+    // Set when a post is freshly shared; the Saved screen runs the foreground
+    // resolution pass (AI body, categorize, locations, Notion sync) for posts
+    // where this is true, then clears it. Defaults false so pre-existing cached
+    // posts aren't re-processed on upgrade.
+    val pendingEnrich: Boolean = false,
 ) {
     companion object {
         const val STATUS_UNREAD  = "Unread"

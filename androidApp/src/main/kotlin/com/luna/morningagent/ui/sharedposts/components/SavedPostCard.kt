@@ -26,6 +26,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.MoreHoriz
+import androidx.compose.material.icons.rounded.Place
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -91,6 +93,8 @@ fun SavedPostCard(
     onDelete: () -> Unit,
     modifier: Modifier = Modifier,
     bodyMaxLines: Int = 4,
+    onOpenLocation: () -> Unit = {},
+    isResolving: Boolean = false,
 ) {
     val morning = MaterialTheme.morning
     val density = LocalDensity.current
@@ -227,15 +231,22 @@ fun SavedPostCard(
                         .fillMaxWidth()
                         .padding(start = 16.dp, end = 14.dp, top = 14.dp, bottom = 14.dp),
                 ) {
-                    PostMetaRow(post = post, onOverflow = onOverflow)
+                    PostMetaRow(
+                        post           = post,
+                        onOverflow     = onOverflow,
+                        onOpenLocation = onOpenLocation,
+                    )
                     Spacer(modifier = Modifier.height(9.dp))
 
                     val hasImage = !post.imageUrl.isNullOrBlank()
+                    // While the freshly-shared post is being enriched on open,
+                    // show a resolving state instead of the bare-URL placeholder.
                     // Body sits next to a thumbnail when we have one; clamped a
                     // line shorter so the card height stays balanced. Without an
                     // image, text uses the full width with the original clamp.
-                    if (hasImage) {
-                        Row(
+                    when {
+                        isResolving -> ResolvingPlaceholder()
+                        hasImage -> Row(
                             modifier              = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                             verticalAlignment     = Alignment.Top,
@@ -247,8 +258,7 @@ fun SavedPostCard(
                             )
                             BookmarkThumbnail(imageUrl = post.imageUrl!!)
                         }
-                    } else {
-                        BodyOrLinkPlaceholder(
+                        else -> BodyOrLinkPlaceholder(
                             post     = post,
                             maxLines = bodyMaxLines,
                         )
@@ -263,7 +273,11 @@ fun SavedPostCard(
 }
 
 @Composable
-private fun PostMetaRow(post: SharedPost, onOverflow: () -> Unit) {
+private fun PostMetaRow(
+    post: SharedPost,
+    onOverflow: () -> Unit,
+    onOpenLocation: () -> Unit,
+) {
     val morning = MaterialTheme.morning
     Row(
         modifier              = Modifier.fillMaxWidth(),
@@ -293,6 +307,16 @@ private fun PostMetaRow(post: SharedPost, onOverflow: () -> Unit) {
             color = morning.textMuted,
             style = MorningType.Caption,
         )
+        // "Open location" action — shown only when at least one place was
+        // resolved at share time. Pins reflect real, already-resolved places, so
+        // the tap is instant: one place opens the map, several open a sheet. A
+        // count badge hints at multi-place posts.
+        if (post.locations.isNotEmpty()) {
+            LocatePin(
+                count   = post.locations.size,
+            onClick = onOpenLocation,
+            )
+        }
         Box(
             modifier         = Modifier
                 .size(width = 26.dp, height = 22.dp)
@@ -309,6 +333,48 @@ private fun PostMetaRow(post: SharedPost, onOverflow: () -> Unit) {
                 contentDescription = stringResource(R.string.cd_post_overflow),
                 tint               = morning.textMuted,
                 modifier           = Modifier.size(16.dp),
+            )
+        }
+    }
+}
+
+/**
+ * Location action affordance in the meta row — an accent pin (signals an
+ * actionable place lookup, distinct from the muted ⋯ overflow). [count] > 1
+ * appends a small number to hint the post has multiple places (tap opens a
+ * sheet); a single place opens the map directly.
+ */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+private fun LocatePin(count: Int, onClick: () -> Unit) {
+    val morning = MaterialTheme.morning
+    Row(
+        modifier              = Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .combinedClickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication        = null,
+                onClick           = onClick,
+            )
+            .padding(horizontal = 5.dp, vertical = 4.dp),
+        verticalAlignment     = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(1.dp),
+    ) {
+        Icon(
+            imageVector        = Icons.Rounded.Place,
+            contentDescription = stringResource(R.string.cd_resolve_location),
+            tint               = morning.accent,
+            modifier           = Modifier.size(16.dp),
+        )
+        if (count > 1) {
+            Text(
+                text  = count.toString(),
+                color = morning.accent,
+                style = androidx.compose.ui.text.TextStyle(
+                    fontFamily = InterFamily,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize   = 11.sp,
+                ),
             )
         }
     }
@@ -355,6 +421,32 @@ private fun CategoryGlyph(post: SharedPost) {
  * pasting the URL string into the body. Keeps the card looking intentional
  * rather than broken when og:description recovery wasn't possible.
  */
+/**
+ * Shown in the body slot while a freshly-shared post is being enriched on app
+ * open (scrape → categorize → resolve places). Replaces the bare-URL placeholder
+ * so the user isn't confused by a link card that's about to fill itself in.
+ */
+@Composable
+private fun ResolvingPlaceholder() {
+    val morning = MaterialTheme.morning
+    Row(
+        modifier              = Modifier.fillMaxWidth(),
+        verticalAlignment     = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        CircularProgressIndicator(
+            color       = morning.accent,
+            strokeWidth = 1.8.dp,
+            modifier    = Modifier.size(14.dp),
+        )
+        Text(
+            text  = stringResource(R.string.saved_post_resolving),
+            color = morning.textMuted,
+            style = MorningType.BodyReadItalic.copy(fontSize = 14.sp),
+        )
+    }
+}
+
 @Composable
 private fun BodyOrLinkPlaceholder(
     post: SharedPost,
@@ -453,6 +545,22 @@ private fun SavedPostCardPreview() {
                     savedAt     = kotlin.time.Clock.System.now(),
                     pendingSync = true,
                     status      = SharedPost.STATUS_DONE,
+                ),
+                onTap       = {},
+                onOverflow  = {},
+                onDelete    = {},
+            )
+            // Image-bearing card — surfaces the accent locate pin in the meta row.
+            SavedPostCard(
+                post = SharedPost(
+                    localId  = "3",
+                    notionId = "def",
+                    content  = "방금 다녀온 성수동 카페. 통창으로 햇빛 잘 들어오고 라떼가 진짜 맛있었음.",
+                    source   = SharedPost.SOURCE_THREADS,
+                    author   = "@luna",
+                    url      = "https://threads.net/@luna/post/cafe",
+                    imageUrl = "https://example.com/cafe.jpg",
+                    savedAt  = kotlin.time.Clock.System.now(),
                 ),
                 onTap       = {},
                 onOverflow  = {},

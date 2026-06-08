@@ -1,7 +1,7 @@
 package com.luna.morningagent.data.sharedposts
 
+import android.util.Log
 import com.luna.morningagent.data.secure.TokenStore
-import java.util.UUID
 import kotlin.time.Clock
 import kotlinx.serialization.json.Json
 
@@ -35,10 +35,16 @@ class SharedPostsRepository(
      * Notion write already has the real post body instead of a bare URL,
      * which prevents `refreshFromNotion()` from later overwriting an
      * enriched local cache with Notion's stale URL.
+     *
+     * Idempotent on [localId]: the share worker generates one stable id per
+     * share and may re-run (retry on a network failure), so a second call with
+     * the same id returns the existing post instead of appending a duplicate.
      */
-    suspend fun save(rawText: String, subject: String?): SaveResult {
+    suspend fun save(rawText: String, subject: String?, localId: String): SaveResult {
         val trimmed = rawText.trim()
         if (trimmed.isEmpty()) return SaveResult.EmptyInput
+
+        readCache().firstOrNull { it.localId == localId }?.let { return SaveResult.SavedPending(it) }
 
         val rawUrl = extractFirstUrl(trimmed)
         val url    = rawUrl?.let { cleanTrackingParams(it) }
@@ -55,7 +61,7 @@ class SharedPostsRepository(
             ?: url?.let { authorFromUrl(it) }
 
         val post = SharedPost(
-            localId               = UUID.randomUUID().toString(),
+            localId               = localId,
             content               = content,
             source                = source,
             author                = author,
@@ -63,6 +69,7 @@ class SharedPostsRepository(
             savedAt               = Clock.System.now(),
             pendingSync           = true,
             pendingCategorization = true,
+            pendingEnrich         = true,
         )
 
         appendToCache(post)
@@ -87,8 +94,10 @@ class SharedPostsRepository(
 
         runCatching { notionClient.createPage(dbId, post) }
             .onSuccess { notionId ->
+                Log.i(TAG, "syncToNotion ok localId=$localId nid=$notionId img=${post.imageUrl != null}")
                 updateCache(localId) { it.copy(notionId = notionId, pendingSync = false) }
             }
+            .onFailure { Log.w(TAG, "syncToNotion FAILED localId=$localId: ${it.message}") }
     }
 
     /**
@@ -145,18 +154,21 @@ class SharedPostsRepository(
      * Pull the latest state of every (non-archived) page from the Notion DB and
      * merge it into the local cache. Notion is treated as the read-side source
      * of truth — its values win on `content`, `categories`, `summary`, `status`.
-     * App-managed signals (`localId`, `pendingSync`, `pendingCategorization`)
-     * are preserved from the local entry.
+     * App-managed + local-only signals (`localId`, `imageUrl`, `pendingSync`,
+     * `pendingCategorization`) are preserved from the local entry.
      *
      * Rules:
-     *   · Local pendingSync entries (no notionId) are preserved — they're the
-     *     outbox waiting to flush.
-     *   · Local entries whose notionId is no longer in the remote list get
-     *     dropped — Notion archived = soft delete on the app side.
+     *   · Every local entry is preserved. A remote match overlays Notion's
+     *     read-side fields; local-only signals (notably the fetched `imageUrl`,
+     *     which Notion doesn't store) are kept.
+     *   · Local entries absent from the remote list are NOT dropped — the list
+     *     is fetched outside the lock, so a just-synced post can be missing from
+     *     a stale snapshot (TOCTOU). Dropping it there wiped the local-only
+     *     imageUrl and made freshly-shared posts return image-less. Deletion is
+     *     an explicit in-app action (which archives in Notion) instead.
      *   · Remote-only pages (notionId we've never seen) are appended.
-     *   · Taxonomy is rebuilt from the merged posts' categories so deletions
-     *     in Notion also remove the corresponding filter chip locally; the
-     *     "Misc" seed is always kept.
+     *   · User-added categories are preserved; names seen on posts are merged in.
+     *     The "Misc" seed is always kept.
      *
      * No-op when sharedPostsDbId isn't set yet.
      */
@@ -164,28 +176,31 @@ class SharedPostsRepository(
         val dbId = tokenStore.getSharedPostsDbId() ?: return
         val remote = runCatching { notionClient.listDatabase(dbId) }.getOrNull() ?: return
         synchronized(this) {
-            val local      = readCache()
-            val localByNid = local.associateBy { it.notionId }.filterKeys { it != null }
-            val remoteIds  = remote.mapNotNull { it.notionId }.toSet()
+            val local       = readCache()
+            val remoteByNid = remote.mapNotNull { r -> r.notionId?.let { it to r } }.toMap()
 
             val merged = mutableListOf<SharedPost>()
 
-            // 1. Outbox first (no notionId, pendingSync=true) — these survive every fetch.
-            local.filter { it.notionId == null }.forEach { merged.add(it) }
-
-            // 2. For each remote row, merge with local-if-present. Notion
-            //    always wins on the content/categories/summary fields — the
-            //    AI-mid-flight race is narrow enough that protecting against
-            //    it locks edits out permanently when the AI never returns
-            //    (no key, empty result). Trust Notion as backend.
-            remote.forEach { remoteRow ->
-                val nid       = remoteRow.notionId ?: return@forEach
-                val cachedRow = localByNid[nid]
-                if (cachedRow != null) {
-                    merged.add(cachedRow.copy(
+            // 1. EVERY local post survives. When Notion has a matching row,
+            //    overlay its read-side fields (Notion wins on content / categories
+            //    / summary / status), but keep local-only signals — crucially the
+            //    locally-fetched imageUrl, which Notion doesn't store. Posts with
+            //    no notionId (outbox) have no remote match and pass through as-is.
+            //
+            //    We intentionally do NOT drop a synced post just because it's
+            //    absent from this remote list: the list is fetched outside the
+            //    lock, so a just-synced post can be missing from a stale snapshot
+            //    (TOCTOU) — dropping it there destroyed the local-only imageUrl and
+            //    made freshly-shared posts come back image-less. Deletion is an
+            //    explicit in-app action (which archives in Notion), not a side
+            //    effect of a refresh seeing a transiently-absent row.
+            local.forEach { localRow ->
+                val remoteRow = localRow.notionId?.let { remoteByNid[it] }
+                if (remoteRow != null) {
+                    merged.add(localRow.copy(
                         content               = remoteRow.content,
-                        author                = remoteRow.author ?: cachedRow.author,
-                        url                   = remoteRow.url ?: cachedRow.url,
+                        author                = remoteRow.author ?: localRow.author,
+                        url                   = remoteRow.url ?: localRow.url,
                         categories            = remoteRow.categories,
                         summary               = remoteRow.summary,
                         status                = remoteRow.status,
@@ -193,31 +208,43 @@ class SharedPostsRepository(
                         pendingCategorization = false,
                     ))
                 } else {
-                    // Brand-new in Notion (manual add, or other-device share).
-                    merged.add(remoteRow)
+                    merged.add(localRow)
                 }
             }
 
-            // 3. Local entries whose notionId is gone from Notion (archived)
-            //    get dropped implicitly — we only re-add from `remote` and the
-            //    pendingSync outbox. `remoteIds` retained for future audit logging.
-            @Suppress("UNUSED_VARIABLE") val ignored = remoteIds
+            // 2. Remote-only rows we've never seen locally (manual Notion add or
+            //    a share from another device).
+            val localNids = local.mapNotNull { it.notionId }.toSet()
+            remote.forEach { remoteRow ->
+                val nid = remoteRow.notionId ?: return@forEach
+                if (nid !in localNids) merged.add(remoteRow)
+            }
 
-            // 4. Sort newest-first so the UI doesn't have to.
+            // 3. Sort newest-first so the UI doesn't have to.
+            val absentFromRemote = local.count { it.notionId != null && it.notionId !in remoteByNid }
+            Log.i(
+                TAG,
+                "refresh local=${local.size} outbox=${local.count { it.notionId == null }} " +
+                    "remote=${remote.size} merged=${merged.size} keptAbsent=$absentFromRemote",
+            )
             writeCache(merged.sortedByDescending { it.savedAt })
 
-            // 5. Rebuild category list from the merged posts so deletions in
-            //    Notion drop the corresponding chip locally. Preserve any
-            //    keyword hints Luna has attached to retained categories; the
-            //    "Misc" seed is always kept.
-            val existingByName = tokenStore.getSharedPostsCategories().associateBy { it.name }
-            val rebuiltNames   = (listOf(SEED_CATEGORY) + merged.flatMap { it.categories })
-                .filter { it.isNotBlank() }
+            // 5. Merge categories seen on posts INTO the existing taxonomy —
+            //    don't rebuild from posts alone. User-added categories that no
+            //    post uses yet must survive a sync; removal is an explicit
+            //    Settings action (removeCategory), not a side effect of a fetch.
+            //    Existing entries keep their order + keyword hints; brand-new
+            //    names found on remote posts are appended. The "Misc" seed is
+            //    always present.
+            val existing      = tokenStore.getSharedPostsCategories()
+            val existingNames = existing.map { it.name }.toSet()
+            val seedIfMissing = if (SEED_CATEGORY in existingNames) emptyList()
+                                else listOf(CategoryDefinition(name = SEED_CATEGORY))
+            val newFromPosts  = merged.flatMap { it.categories }
+                .filter { it.isNotBlank() && it !in existingNames }
                 .distinct()
-            val rebuilt = rebuiltNames.map { name ->
-                existingByName[name] ?: CategoryDefinition(name = name)
-            }
-            tokenStore.saveSharedPostsCategories(rebuilt)
+                .map { CategoryDefinition(name = it) }
+            tokenStore.saveSharedPostsCategories(seedIfMissing + existing + newFromPosts)
         }
     }
 
@@ -345,6 +372,33 @@ class SharedPostsRepository(
         updateCache(localId) { it.copy(imageUrl = imageUrl) }
     }
 
+    /**
+     * Stamp the resolved places onto a cached post. Local-only, like
+     * [updateImageUrl] — Notion doesn't store them, and `refreshFromNotion`
+     * preserves them. Resolved once at share time; a non-empty list is what makes
+     * the Saved card show its map pin (one → opens directly, many → sheet).
+     */
+    fun updateLocations(localId: String, places: List<ResolvedPlace>) {
+        if (places.isEmpty()) return
+        updateCache(localId) { it.copy(locations = places) }
+    }
+
+    /**
+     * Overwrite a post's resolved places — including with an empty list, which
+     * [updateLocations] refuses (it guards against the resolver clobbering good
+     * data with a no-match). Used by the user's manual delete-place action, where
+     * removing the last place legitimately clears the pin.
+     */
+    fun setLocations(localId: String, places: List<ResolvedPlace>) {
+        updateCache(localId) { it.copy(locations = places) }
+    }
+
+    /** Clear the freshly-shared flag once the Saved screen's foreground
+     *  resolution pass has finished enriching this post. */
+    fun clearPendingEnrich(localId: String) {
+        updateCache(localId) { it.copy(pendingEnrich = false) }
+    }
+
     fun remove(localId: String) {
         val current = readCache().filterNot { it.localId == localId }
         writeCache(current)
@@ -462,6 +516,7 @@ class SharedPostsRepository(
         // Seed category — always kept in the taxonomy so empty Notion DBs and
         // first-launch states still show a usable filter chip + categorizer
         // fallback.
+        private const val TAG = "SharedPostsRepo"
         private const val SEED_CATEGORY = "Misc"
 
         // Matches https?://[^\s]+ — good enough for shared text payloads.

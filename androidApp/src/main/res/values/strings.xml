@@ -44,6 +44,7 @@
     <string name="settings_field_claude">Claude API key</string>
     <string name="settings_section_data_source">DATA SOURCE</string>
     <string name="settings_field_gemini">Gemini API key</string>
+    <string name="settings_field_places">Google Places API key (optional)</string>
     <string name="settings_field_notion">Notion integration token</string>
     <string name="settings_field_database">Notion database (URL or ID)</string>
     <string name="settings_button_save">Save</string>
@@ -135,6 +136,10 @@
     <string name="home_pending_banner">%1$d saves waiting · finish Notion sync</string>
     <string name="cd_delete_post">Delete saved post</string>
     <string name="cd_post_overflow">Post actions</string>
+    <string name="cd_resolve_location">Find location on map</string>
+    <string name="cd_remove_place">Remove place</string>
+    <string name="saved_post_resolving">New post resolving…</string>
+    <string name="location_none_toast">No location found in this post</string>
     <string name="saved_search_placeholder">Search content, author, source</string>
 
     <!-- v4 Settings -->

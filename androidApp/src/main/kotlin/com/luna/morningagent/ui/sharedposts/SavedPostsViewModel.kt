@@ -8,7 +8,10 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.luna.morningagent.data.notion.NotionConfigMissingException
 import com.luna.morningagent.data.secure.TokenStore
+import com.luna.morningagent.data.sharedposts.ResolvedPlace
 import com.luna.morningagent.data.sharedposts.SharedPost
+import com.luna.morningagent.data.sharedposts.SharedPostBodyFetcher
+import com.luna.morningagent.data.sharedposts.SharedPostCategorizer
 import com.luna.morningagent.data.sharedposts.SharedPostsNotionClient
 import com.luna.morningagent.data.sharedposts.SharedPostsRepository
 import com.luna.morningagent.ui.settings.extractNotionDatabaseId
@@ -31,6 +34,14 @@ class SavedPostsViewModel(application: Application) : AndroidViewModel(applicati
     private val tokenStore   = TokenStore(application)
     private val notionClient = SharedPostsNotionClient(tokenStore)
     private val repo         = SharedPostsRepository(tokenStore, notionClient)
+    private val bodyFetcher  = SharedPostBodyFetcher(tokenStore)
+    private val categorizer  = SharedPostCategorizer(tokenStore)
+
+    /** True while [resolvePending] is enriching freshly-shared posts. Cards whose
+     *  post is still `pendingEnrich` show a "resolving" state while this is on.
+     *  Also guards against overlapping runs (init + each ON_RESUME). */
+    var resolving: Boolean by mutableStateOf(false)
+        private set
 
     var posts: List<SharedPost> by mutableStateOf(emptyList())
         private set
@@ -57,11 +68,78 @@ class SavedPostsViewModel(application: Application) : AndroidViewModel(applicati
 
     init {
         refresh()
+        resolvePending()
     }
 
     fun refresh() {
         posts = repo.listAll()
         dbId  = tokenStore.getSharedPostsDbId()
+    }
+
+    /**
+     * Foreground enrichment pass — called on init and on every screen ON_RESUME.
+     *
+     * For each post flagged [SharedPost.pendingEnrich] (set at share time), run
+     * the network-heavy work the share receiver deferred: recover the body if the
+     * share-time scrape couldn't, sync to Notion, categorize, and resolve places.
+     * Runs here (foreground) on purpose — the OS blocks the app's *background*
+     * network on metered connections under Battery Saver / restricted background
+     * data, but foreground is exempt. Refreshes after each post so pins/categories
+     * appear as they land; clears the flag only on a successful body so a
+     * transient miss retries next open.
+     */
+    fun resolvePending() {
+        if (resolving) return
+        val pending = repo.listAll().filter { it.pendingEnrich }
+        if (pending.isEmpty()) return
+        resolving = true
+        viewModelScope.launch {
+            for (post in pending) {
+                runCatching { enrichOne(post) }
+                refresh()
+            }
+            resolving = false
+        }
+    }
+
+    private suspend fun enrichOne(post: SharedPost) {
+        var working = post
+        // Recover body / image if the share-time scrape didn't (offline then, or
+        // skipped). fetch() is best-effort and never throws fatally.
+        val url = post.url
+        if (url != null && (post.content == url || post.content.length < 80 || post.imageUrl == null)) {
+            runCatching { bodyFetcher.fetch(url) }.getOrNull()?.let { meta ->
+                if (!meta.body.isNullOrBlank() && (working.content == url || working.content.length < 80)) {
+                    repo.updateContent(post.localId, meta.body)
+                    working = working.copy(content = meta.body)
+                }
+                if (!meta.imageUrl.isNullOrBlank() && working.imageUrl == null) {
+                    repo.updateImageUrl(post.localId, meta.imageUrl)
+                    working = working.copy(imageUrl = meta.imageUrl)
+                }
+            }
+        }
+
+        repo.syncToNotion(working.localId)
+
+        val categories = categorizer.categorize(working, tokenStore.getSharedPostsCategories())
+        if (categories != null) {
+            repo.applyCategorization(
+                localId    = working.localId,
+                categories = categories.categories,
+                summary    = categories.summary.ifBlank { null },
+            )
+        }
+
+        val places = runCatching {
+            bodyFetcher.resolvePostLocations(working.content, working.imageUrl)
+        }.getOrNull().orEmpty()
+        repo.updateLocations(working.localId, places)
+
+        // Done unless the body still couldn't be recovered (likely a transient
+        // failure) — leave it flagged so the next open retries.
+        val stillBareUrl = url != null && working.content == url
+        if (!stillBareUrl) repo.clearPendingEnrich(working.localId)
     }
 
     /**
@@ -112,6 +190,17 @@ class SavedPostsViewModel(application: Application) : AndroidViewModel(applicati
 
     val pendingSyncCount: Int
         get() = posts.count { it.pendingSync }
+
+    // Locations are resolved once at share time (the share workers) and stored on
+    // the post; the Saved card reads post.locations directly and opens the map
+    // (or a places sheet) on tap — no on-demand resolve here.
+
+    /** Remove one resolved place from a post — manual cleanup of a wrong or
+     *  irrelevant pin from the places sheet. Clearing the last one hides the pin. */
+    fun deletePlace(post: SharedPost, place: ResolvedPlace) {
+        repo.setLocations(post.localId, post.locations.filterNot { it == place })
+        refresh()
+    }
 
     // --- Delete -------------------------------------------------------------
 

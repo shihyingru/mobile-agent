@@ -44,11 +44,17 @@ class TokenStore(context: Context) {
     private val crypto     = TinkCrypto(appContext)
     private val dataStore  = appContext.tokenDataStore
     private val scope      = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val cache      = ConcurrentHashMap<String, Any>()
+
+    // Process-shared in-memory cache. Reads serve from here and writes update it,
+    // so every TokenStore instance (Activity, ViewModel, Worker) sees the same
+    // state — a write by one is immediately visible to all. Per-instance caches
+    // would diverge: e.g. a share-time scrape writing the post body wouldn't be
+    // seen by an already-constructed Saved-screen instance.
+    private val cache = sharedCache
 
     init {
-        runBlocking {
-            populateCacheFrom(dataStore.data.first())
+        if (warmedFrom.compareAndSet(false, true)) {
+            runBlocking { populateCacheFrom(dataStore.data.first()) }
         }
     }
 
@@ -56,6 +62,9 @@ class TokenStore(context: Context) {
 
     fun saveGeminiKey(key: String) = writeString(KEY_GEMINI, key)
     fun getGeminiKey(): String? = readString(KEY_GEMINI)
+
+    fun saveGooglePlacesKey(key: String) = writeString(KEY_GOOGLE_PLACES, key)
+    fun getGooglePlacesKey(): String? = readString(KEY_GOOGLE_PLACES)
 
     fun saveNotionToken(token: String) = writeString(KEY_NOTION, token)
     fun getNotionToken(): String? = readString(KEY_NOTION)
@@ -198,7 +207,13 @@ class TokenStore(context: Context) {
     fun getAppLanguage(): String = readString(KEY_APP_LANGUAGE) ?: DEFAULT_LANGUAGE
 
     companion object {
+        // Process-shared so all TokenStore instances read/write one map; warmed
+        // from DataStore exactly once per process.
+        private val sharedCache = ConcurrentHashMap<String, Any>()
+        private val warmedFrom  = java.util.concurrent.atomic.AtomicBoolean(false)
+
         private const val KEY_GEMINI               = "gemini_api_key"
+        private const val KEY_GOOGLE_PLACES        = "google_places_api_key"
         private const val KEY_NOTION               = "notion_token"
         private const val KEY_NOTION_DB            = "notion_database_id"
         private const val KEY_AUTO_RUN             = "auto_run_on_launch"
@@ -232,7 +247,7 @@ class TokenStore(context: Context) {
 
         // Tink-sealed (sensitive or text). Plain in DataStore (bool / int — not secrets).
         private val STRING_KEYS = listOf(
-            KEY_GEMINI, KEY_NOTION, KEY_NOTION_DB,
+            KEY_GEMINI, KEY_GOOGLE_PLACES, KEY_NOTION, KEY_NOTION_DB,
             KEY_GEMINI_MODEL, KEY_CLAUDE, KEY_CLAUDE_MODEL,
             KEY_PROVIDER, KEY_LAST_BRIEFING, KEY_LAST_REFLECTION,
             KEY_SHARED_POSTS_DB_ID, KEY_SHARED_POSTS_TAXONOMY, KEY_SHARED_POSTS_CACHE,

@@ -74,6 +74,7 @@ import com.luna.morningagent.data.sharedposts.SharedPost
 import com.luna.morningagent.ui.settings.components.SettingsInput
 import com.luna.morningagent.ui.sharedposts.components.SavedPostActionSheet
 import com.luna.morningagent.ui.sharedposts.components.SavedPostCard
+import com.luna.morningagent.ui.sharedposts.components.SavedPostPlacesSheet
 import com.luna.morningagent.ui.theme.InterFamily
 import com.luna.morningagent.ui.theme.MorningAgentTheme
 import com.luna.morningagent.ui.theme.MorningType
@@ -93,13 +94,17 @@ fun SavedPostsScreen(
         vm.refreshFromNotion()
     }
 
-    // ON_RESUME re-reads the local cache so background shares made via
-    // ShareReceiverActivity (which writes to the same store but doesn't touch
-    // this VM) become visible the moment Luna swipes back into the app.
+    // ON_RESUME re-reads the cache so a post shared via ShareReceiverActivity
+    // shows immediately, and runs the foreground enrichment pass for any post the
+    // receiver only saved+scraped (categorize / locations / Notion sync happen
+    // here, where the app is foreground and network isn't restricted).
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) vm.refresh()
+            if (event == Lifecycle.Event.ON_RESUME) {
+                vm.refresh()
+                vm.resolvePending()
+            }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
@@ -116,6 +121,7 @@ fun SavedPostsScreen(
 
     var expandedId: String? by remember { mutableStateOf(null) }
     var sheetPost: SharedPost? by remember { mutableStateOf(null) }
+    var placesSheetPost: SharedPost? by remember { mutableStateOf(null) }
 
     Box(
         modifier = modifier
@@ -183,14 +189,22 @@ fun SavedPostsScreen(
                         }
                     }
                     SavedPostCard(
-                        post         = post,
-                        onTap        = {
+                        post              = post,
+                        onTap             = {
                             if (post.url != null) openExternal()
                             else expandedId = if (expandedId == post.localId) null else post.localId
                         },
-                        onOverflow   = { sheetPost = post },
-                        onDelete     = { vm.delete(post) },
-                        bodyMaxLines = if (expandedId == post.localId) Int.MAX_VALUE else 4,
+                        onOverflow        = { sheetPost = post },
+                        onDelete          = { vm.delete(post) },
+                        bodyMaxLines      = if (expandedId == post.localId) Int.MAX_VALUE else 4,
+                        onOpenLocation    = {
+                            val locs = post.locations
+                            when {
+                                locs.size == 1 -> openLocationInMap(context, locs[0].name, locs[0].mapsUri)
+                                locs.size > 1  -> placesSheetPost = post
+                            }
+                        },
+                        isResolving       = post.pendingEnrich && vm.resolving,
                     )
                 }
             }
@@ -218,6 +232,21 @@ fun SavedPostsScreen(
                 vm.delete(target)
                 sheetPost = null
             },
+        )
+    }
+
+    placesSheetPost?.let { target ->
+        SavedPostPlacesSheet(
+            places        = target.locations,
+            onOpenPlace   = { place -> openLocationInMap(context, place.name, place.mapsUri) },
+            onDeletePlace = { place ->
+                vm.deletePlace(target, place)
+                // Re-point the sheet at the updated post (one fewer place), or
+                // close it once the last place is gone.
+                placesSheetPost = vm.posts.firstOrNull { it.localId == target.localId }
+                    ?.takeIf { it.locations.isNotEmpty() }
+            },
+            onDismiss     = { placesSheetPost = null },
         )
     }
 }
