@@ -38,6 +38,10 @@ data class SharedPost(
     // where this is true, then clears it. Defaults false so pre-existing cached
     // posts aren't re-processed on upgrade.
     val pendingEnrich: Boolean = false,
+    // How many foreground enrich passes have run without recovering the body.
+    // Caps retries (offline/transient) so a genuinely un-scrapeable post stops
+    // re-billing Gemini + Places on every app open.
+    val enrichAttempts: Int = 0,
 ) {
     companion object {
         const val STATUS_UNREAD  = "Unread"
