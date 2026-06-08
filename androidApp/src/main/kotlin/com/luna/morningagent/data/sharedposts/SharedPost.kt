@@ -33,6 +33,11 @@ data class SharedPost(
     val status: String = STATUS_UNREAD,
     val pendingSync: Boolean = false,
     val pendingCategorization: Boolean = true,
+    // Set when a post is freshly shared; the Saved screen runs the foreground
+    // resolution pass (AI body, categorize, locations, Notion sync) for posts
+    // where this is true, then clears it. Defaults false so pre-existing cached
+    // posts aren't re-processed on upgrade.
+    val pendingEnrich: Boolean = false,
 ) {
     companion object {
         const val STATUS_UNREAD  = "Unread"

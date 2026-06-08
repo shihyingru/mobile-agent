@@ -138,6 +138,7 @@
     <string name="cd_post_overflow">Post actions</string>
     <string name="cd_resolve_location">Find location on map</string>
     <string name="cd_remove_place">Remove place</string>
+    <string name="saved_post_resolving">New post resolving…</string>
     <string name="location_none_toast">No location found in this post</string>
     <string name="saved_search_placeholder">Search content, author, source</string>
 

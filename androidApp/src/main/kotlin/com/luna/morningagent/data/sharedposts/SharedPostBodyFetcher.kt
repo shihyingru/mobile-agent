@@ -382,21 +382,38 @@ class SharedPostBodyFetcher(
         val key = tokenStore.getGooglePlacesKey()
         if (key == null) { Log.w(TAG, "resolveLocations: no Places key"); return emptyList() }
 
-        // Text-first; fall back to the heavier image OCR when the caption is dry.
-        val text = content?.takeIf { it.isNotBlank() }?.let { analyzeText(it) }
-        val analysis = text?.takeIf { it.places.isNotEmpty() || it.locationSignals.isNotEmpty() }
-            ?: imageUrl?.let { analyzeImage(content, it) }
-            ?: return emptyList()
+        // Text-first. But for an image post with a thin caption, the venue name is
+        // usually on the storefront, not in the few words of text — so ALSO OCR
+        // the image when the text found no place or the caption is too short to
+        // name one, and put the image's places first (signage = the real name).
+        // Long captions (listicles) stay text-only, so no extra vision cost.
+        val text       = content?.takeIf { it.isNotBlank() }?.let { analyzeText(it) }
+        val textPlaces = text?.places.orEmpty()
+        val captionShort = (content?.length ?: 0) < SHORT_CAPTION_CHARS
+        val image = if (imageUrl != null && (textPlaces.isEmpty() || captionShort)) {
+            imageUrl.let { analyzeImage(content, it) }
+        } else {
+            null
+        }
 
-        // Prefer the structured destinations; if a malformed response left only
-        // salvaged flat signals, resolve the single most-specific one.
-        val candidates = analysis.places
+        // Prefer the image's places when image OCR ran and found any: analyzeImage
+        // is given the caption too, so its result already reflects both the photo
+        // (storefront name) AND the text — and it skips the vague descriptions the
+        // text-only pass mistakes for venues (e.g. "Singapore ice-cream cookie
+        // shop"). Fall back to the text's places only when the image found none.
+        val places = (image?.places?.takeIf { it.isNotEmpty() } ?: textPlaces)
             .filter { it.query.isNotBlank() || it.name.isNotBlank() }
+            .distinctBy { (it.name.ifBlank { it.query }).trim().lowercase() }
+
+        // If a malformed model response left only salvaged flat signals, resolve
+        // the single most-specific one.
+        val candidates = places
             .ifEmpty {
-                analysis.locationSignals.firstOrNull()?.let { listOf(PlaceQuery(name = it, query = it)) }
-                    ?: emptyList()
+                val signals = text?.locationSignals.orEmpty().ifEmpty { image?.locationSignals.orEmpty() }
+                signals.firstOrNull()?.let { listOf(PlaceQuery(name = it, query = it)) } ?: emptyList()
             }
             .take(MAX_PLACES)
+        if (candidates.isEmpty()) return emptyList()
 
         // One row per distinct model entry — the model already lists each item
         // once ("merge only the same venue"), so we dedupe by NAME, not by Places
@@ -490,6 +507,10 @@ class SharedPostBodyFetcher(
         // "best 15 spots" listicle in full; still a backstop against a runaway
         // response. Each resolved place is one Places call.
         private const val MAX_PLACES            = 20
+        // Captions shorter than this are treated as image-primary posts: the
+        // venue name is likely on the storefront in the photo, so OCR the image
+        // even if the text yielded a (probably generic) place.
+        private const val SHORT_CAPTION_CHARS   = 80
 
         // Crawler UA first (social apps gate real OG meta behind it); a real
         // browser UA is the retry for hosts that refuse the FB crawler.

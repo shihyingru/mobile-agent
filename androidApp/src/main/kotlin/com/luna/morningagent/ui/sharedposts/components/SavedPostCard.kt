@@ -27,6 +27,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.Place
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -93,6 +94,7 @@ fun SavedPostCard(
     modifier: Modifier = Modifier,
     bodyMaxLines: Int = 4,
     onOpenLocation: () -> Unit = {},
+    isResolving: Boolean = false,
 ) {
     val morning = MaterialTheme.morning
     val density = LocalDensity.current
@@ -237,11 +239,14 @@ fun SavedPostCard(
                     Spacer(modifier = Modifier.height(9.dp))
 
                     val hasImage = !post.imageUrl.isNullOrBlank()
+                    // While the freshly-shared post is being enriched on open,
+                    // show a resolving state instead of the bare-URL placeholder.
                     // Body sits next to a thumbnail when we have one; clamped a
                     // line shorter so the card height stays balanced. Without an
                     // image, text uses the full width with the original clamp.
-                    if (hasImage) {
-                        Row(
+                    when {
+                        isResolving -> ResolvingPlaceholder()
+                        hasImage -> Row(
                             modifier              = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                             verticalAlignment     = Alignment.Top,
@@ -253,8 +258,7 @@ fun SavedPostCard(
                             )
                             BookmarkThumbnail(imageUrl = post.imageUrl!!)
                         }
-                    } else {
-                        BodyOrLinkPlaceholder(
+                        else -> BodyOrLinkPlaceholder(
                             post     = post,
                             maxLines = bodyMaxLines,
                         )
@@ -310,7 +314,7 @@ private fun PostMetaRow(
         if (post.locations.isNotEmpty()) {
             LocatePin(
                 count   = post.locations.size,
-                onClick = onOpenLocation,
+            onClick = onOpenLocation,
             )
         }
         Box(
@@ -417,6 +421,32 @@ private fun CategoryGlyph(post: SharedPost) {
  * pasting the URL string into the body. Keeps the card looking intentional
  * rather than broken when og:description recovery wasn't possible.
  */
+/**
+ * Shown in the body slot while a freshly-shared post is being enriched on app
+ * open (scrape → categorize → resolve places). Replaces the bare-URL placeholder
+ * so the user isn't confused by a link card that's about to fill itself in.
+ */
+@Composable
+private fun ResolvingPlaceholder() {
+    val morning = MaterialTheme.morning
+    Row(
+        modifier              = Modifier.fillMaxWidth(),
+        verticalAlignment     = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        CircularProgressIndicator(
+            color       = morning.accent,
+            strokeWidth = 1.8.dp,
+            modifier    = Modifier.size(14.dp),
+        )
+        Text(
+            text  = stringResource(R.string.saved_post_resolving),
+            color = morning.textMuted,
+            style = MorningType.BodyReadItalic.copy(fontSize = 14.sp),
+        )
+    }
+}
+
 @Composable
 private fun BodyOrLinkPlaceholder(
     post: SharedPost,

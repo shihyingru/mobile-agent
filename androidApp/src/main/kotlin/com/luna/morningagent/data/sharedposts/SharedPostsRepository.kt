@@ -69,6 +69,7 @@ class SharedPostsRepository(
             savedAt               = Clock.System.now(),
             pendingSync           = true,
             pendingCategorization = true,
+            pendingEnrich         = true,
         )
 
         appendToCache(post)
@@ -390,6 +391,12 @@ class SharedPostsRepository(
      */
     fun setLocations(localId: String, places: List<ResolvedPlace>) {
         updateCache(localId) { it.copy(locations = places) }
+    }
+
+    /** Clear the freshly-shared flag once the Saved screen's foreground
+     *  resolution pass has finished enriching this post. */
+    fun clearPendingEnrich(localId: String) {
+        updateCache(localId) { it.copy(pendingEnrich = false) }
     }
 
     fun remove(localId: String) {

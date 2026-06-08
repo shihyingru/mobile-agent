@@ -94,13 +94,17 @@ fun SavedPostsScreen(
         vm.refreshFromNotion()
     }
 
-    // ON_RESUME re-reads the local cache so background shares made via
-    // ShareReceiverActivity (which writes to the same store but doesn't touch
-    // this VM) become visible the moment Luna swipes back into the app.
+    // ON_RESUME re-reads the cache so a post shared via ShareReceiverActivity
+    // shows immediately, and runs the foreground enrichment pass for any post the
+    // receiver only saved+scraped (categorize / locations / Notion sync happen
+    // here, where the app is foreground and network isn't restricted).
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) vm.refresh()
+            if (event == Lifecycle.Event.ON_RESUME) {
+                vm.refresh()
+                vm.resolvePending()
+            }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
@@ -200,6 +204,7 @@ fun SavedPostsScreen(
                                 locs.size > 1  -> placesSheetPost = post
                             }
                         },
+                        isResolving       = post.pendingEnrich && vm.resolving,
                     )
                 }
             }

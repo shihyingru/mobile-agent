@@ -44,11 +44,17 @@ class TokenStore(context: Context) {
     private val crypto     = TinkCrypto(appContext)
     private val dataStore  = appContext.tokenDataStore
     private val scope      = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val cache      = ConcurrentHashMap<String, Any>()
+
+    // Process-shared in-memory cache. Reads serve from here and writes update it,
+    // so every TokenStore instance (Activity, ViewModel, Worker) sees the same
+    // state — a write by one is immediately visible to all. Per-instance caches
+    // would diverge: e.g. a share-time scrape writing the post body wouldn't be
+    // seen by an already-constructed Saved-screen instance.
+    private val cache = sharedCache
 
     init {
-        runBlocking {
-            populateCacheFrom(dataStore.data.first())
+        if (warmedFrom.compareAndSet(false, true)) {
+            runBlocking { populateCacheFrom(dataStore.data.first()) }
         }
     }
 
@@ -201,6 +207,11 @@ class TokenStore(context: Context) {
     fun getAppLanguage(): String = readString(KEY_APP_LANGUAGE) ?: DEFAULT_LANGUAGE
 
     companion object {
+        // Process-shared so all TokenStore instances read/write one map; warmed
+        // from DataStore exactly once per process.
+        private val sharedCache = ConcurrentHashMap<String, Any>()
+        private val warmedFrom  = java.util.concurrent.atomic.AtomicBoolean(false)
+
         private const val KEY_GEMINI               = "gemini_api_key"
         private const val KEY_GOOGLE_PLACES        = "google_places_api_key"
         private const val KEY_NOTION               = "notion_token"
