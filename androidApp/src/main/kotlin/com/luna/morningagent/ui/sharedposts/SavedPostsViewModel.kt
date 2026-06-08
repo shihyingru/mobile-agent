@@ -17,6 +17,10 @@ import com.luna.morningagent.data.sharedposts.SharedPostsRepository
 import com.luna.morningagent.ui.settings.extractNotionDatabaseId
 import kotlinx.coroutines.launch
 
+/** Max foreground enrich passes before giving up on a post whose body never
+ *  recovers — bounds repeated Gemini + Places calls on un-scrapeable shares. */
+private const val MAX_ENRICH_ATTEMPTS = 3
+
 /**
  * State + actions for the Saved Posts screen.
  *
@@ -136,10 +140,16 @@ class SavedPostsViewModel(application: Application) : AndroidViewModel(applicati
         }.getOrNull().orEmpty()
         repo.updateLocations(working.localId, places)
 
-        // Done unless the body still couldn't be recovered (likely a transient
-        // failure) — leave it flagged so the next open retries.
+        // Done once the body is recovered. If it still couldn't be (offline, or a
+        // genuinely login-walled / dead link), keep it pending for a few retries
+        // on later opens, then give up — otherwise an un-scrapeable post would
+        // re-run the paid Gemini + Places work on every single app open.
         val stillBareUrl = url != null && working.content == url
-        if (!stillBareUrl) repo.clearPendingEnrich(working.localId)
+        if (!stillBareUrl) {
+            repo.clearPendingEnrich(working.localId)
+        } else {
+            repo.recordFailedEnrich(working.localId, MAX_ENRICH_ATTEMPTS)
+        }
     }
 
     /**

@@ -175,7 +175,7 @@ class SharedPostsRepository(
     suspend fun refreshFromNotion() {
         val dbId = tokenStore.getSharedPostsDbId() ?: return
         val remote = runCatching { notionClient.listDatabase(dbId) }.getOrNull() ?: return
-        synchronized(this) {
+        synchronized(CACHE_LOCK) {
             val local       = readCache()
             val remoteByNid = remote.mapNotNull { r -> r.notionId?.let { it to r } }.toMap()
 
@@ -396,31 +396,50 @@ class SharedPostsRepository(
     /** Clear the freshly-shared flag once the Saved screen's foreground
      *  resolution pass has finished enriching this post. */
     fun clearPendingEnrich(localId: String) {
-        updateCache(localId) { it.copy(pendingEnrich = false) }
+        updateCache(localId) { it.copy(pendingEnrich = false, enrichAttempts = 0) }
+    }
+
+    /** Record a foreground enrich pass that couldn't recover the body. Keeps the
+     *  post pending (so it retries on the next open — covers offline/transient
+     *  failures) until [maxAttempts], then gives up so it stops re-running the
+     *  paid Gemini + Places work on every open. */
+    fun recordFailedEnrich(localId: String, maxAttempts: Int) {
+        updateCache(localId) {
+            val attempts = it.enrichAttempts + 1
+            it.copy(enrichAttempts = attempts, pendingEnrich = attempts < maxAttempts)
+        }
     }
 
     fun remove(localId: String) {
-        val current = readCache().filterNot { it.localId == localId }
-        writeCache(current)
+        synchronized(CACHE_LOCK) {
+            writeCache(readCache().filterNot { it.localId == localId })
+        }
     }
 
     // --- Cache I/O ----------------------------------------------------------
 
-    @Synchronized
+    // The post cache lives in TokenStore's process-shared map, but each caller
+    // (Activity, ViewModel) has its own repository, so @Synchronized (which locks
+    // the instance) wouldn't serialize them. Lock on a process-wide monitor so
+    // every read-modify-write of the cache across all instances is atomic and
+    // can't lose an update.
     private fun appendToCache(post: SharedPost) {
-        val current = readCache().toMutableList()
-        // Newest first so the UI doesn't have to sort.
-        current.add(0, post)
-        writeCache(current)
+        synchronized(CACHE_LOCK) {
+            val current = readCache().toMutableList()
+            // Newest first so the UI doesn't have to sort.
+            current.add(0, post)
+            writeCache(current)
+        }
     }
 
-    @Synchronized
     private fun updateCache(localId: String, transform: (SharedPost) -> SharedPost) {
-        val current = readCache().toMutableList()
-        val idx = current.indexOfFirst { it.localId == localId }
-        if (idx < 0) return
-        current[idx] = transform(current[idx])
-        writeCache(current)
+        synchronized(CACHE_LOCK) {
+            val current = readCache().toMutableList()
+            val idx = current.indexOfFirst { it.localId == localId }
+            if (idx < 0) return
+            current[idx] = transform(current[idx])
+            writeCache(current)
+        }
     }
 
     private fun readCache(): List<SharedPost> {
@@ -513,6 +532,11 @@ class SharedPostsRepository(
     }
 
     companion object {
+        // Process-wide monitor: the post cache is shared across all repository
+        // instances (via TokenStore's shared map), so its read-modify-write must
+        // be serialized on a single lock, not per-instance.
+        private val CACHE_LOCK = Any()
+
         // Seed category — always kept in the taxonomy so empty Notion DBs and
         // first-launch states still show a usable filter chip + categorizer
         // fallback.

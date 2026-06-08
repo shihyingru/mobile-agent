@@ -53,8 +53,18 @@ class TokenStore(context: Context) {
     private val cache = sharedCache
 
     init {
-        if (warmedFrom.compareAndSet(false, true)) {
-            runBlocking { populateCacheFrom(dataStore.data.first()) }
+        // Warm the shared cache exactly once per process. The flag is flipped
+        // only AFTER populate, under a lock, so a second TokenStore constructed
+        // concurrently blocks here until the cache is filled instead of racing
+        // ahead and reading an empty map (which previously could overwrite the
+        // persisted cache with a single freshly-saved post).
+        if (!warmed) {
+            synchronized(warmLock) {
+                if (!warmed) {
+                    runBlocking { populateCacheFrom(dataStore.data.first()) }
+                    warmed = true
+                }
+            }
         }
     }
 
@@ -208,9 +218,10 @@ class TokenStore(context: Context) {
 
     companion object {
         // Process-shared so all TokenStore instances read/write one map; warmed
-        // from DataStore exactly once per process.
+        // from DataStore exactly once per process under warmLock.
         private val sharedCache = ConcurrentHashMap<String, Any>()
-        private val warmedFrom  = java.util.concurrent.atomic.AtomicBoolean(false)
+        private val warmLock    = Any()
+        @Volatile private var warmed = false
 
         private const val KEY_GEMINI               = "gemini_api_key"
         private const val KEY_GOOGLE_PLACES        = "google_places_api_key"
