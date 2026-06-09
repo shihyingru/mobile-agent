@@ -66,6 +66,7 @@
     <string name="notification_channel_briefing_desc">Morning Agent 的每日 Notion 任務摘要與 Gemini 建議。</string>
     <string name="notification_title">你的簡報 — %1$d 個任務</string>
     <string name="notification_sample_body">範例簡報 — 在郵件搶走你的早晨之前，先處理最深入的任務。</string>
+    <string name="notification_title_evening">今日總結 — %1$d 個待續項目</string>
     <string name="settings_button_test_notification">發送測試通知</string>
     <string name="cd_back">返回</string>
 

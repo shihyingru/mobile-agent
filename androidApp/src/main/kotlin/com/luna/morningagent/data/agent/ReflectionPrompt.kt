@@ -27,18 +27,20 @@ internal const val REFLECTION_SYSTEM_PROMPT =
 internal fun buildReflectionPrompt(
     currentTasks: List<Task>,
     morningContext: Briefing?,
+    language: String,
     today: LocalDate = LocalDate.now(ZoneId.systemDefault()),
 ): Prompt = prompt(
     id     = "evening-reflection",
     params = LLMParams(temperature = BRIEFING_TEMPERATURE),
 ) {
     system(REFLECTION_SYSTEM_PROMPT)
-    user(buildReflectionUserMessage(currentTasks, morningContext, today))
+    user(buildReflectionUserMessage(currentTasks, morningContext, language, today))
 }
 
 internal fun buildReflectionUserMessage(
     currentTasks: List<Task>,
     morningContext: Briefing?,
+    language: String,
     today: LocalDate,
 ): String = buildString {
     val tomorrow = today.plusDays(1)
@@ -92,4 +94,6 @@ internal fun buildReflectionUserMessage(
     appendLine("Return ONLY a JSON object, no markdown fences, matching this shape:")
     appendLine("""{"summary": "...", "tips": {"<id>": "..."}, "proposedActions": [{"type": "reschedule", "taskId": "<id>", "reason": "...", "newDate": "$tomorrow"}]}""")
     appendLine("Every currently-open task id must appear as a key in \"tips\". \"proposedActions\" may be absent or have at most 2 entries.")
+    appendLine()
+    appendLine(outputLanguageDirective(language))
 }
