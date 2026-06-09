@@ -6,12 +6,14 @@ import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
 import com.luna.morningagent.data.secure.TokenStore
+import com.luna.morningagent.data.sharedposts.SaveResult
 import com.luna.morningagent.data.sharedposts.SharedPostsRepository
 import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Lightweight receiver for ACTION_SEND text/plain shares from any app.
@@ -47,15 +49,27 @@ class ShareReceiverActivity : Activity() {
         val appContext = applicationContext
         val tokenStore = TokenStore(appContext)
         val repo       = SharedPostsRepository(tokenStore)
+        val hasDb      = tokenStore.getSharedPostsDbId() != null
 
-        val hasDb    = tokenStore.getSharedPostsDbId() != null
-        val toastRes = if (hasDb) R.string.share_saved_toast else R.string.share_saved_pending_toast
-        Toast.makeText(appContext, toastRes, Toast.LENGTH_SHORT).show()
-
-        // Save only — local cache write, no network. Quick enough to complete
-        // before the process is backgrounded; the shared in-memory cache makes it
-        // visible to the Saved screen immediately.
-        scope.launch { repo.save(rawText, subject, UUID.randomUUID().toString()) }
+        // Save (local cache write, no network) on a background scope, then toast
+        // the actual OUTCOME — not an optimistic guess. A cache-write failure must
+        // read "couldn't save", never "Saved". The save is quick enough to finish
+        // before the process is backgrounded; the shared in-memory cache makes a
+        // successful save visible to the Saved screen immediately, and network
+        // enrichment is deferred to SavedPostsViewModel.resolvePending on open.
+        scope.launch {
+            val saved = runCatching {
+                repo.save(rawText, subject, UUID.randomUUID().toString())
+            }.getOrNull() is SaveResult.SavedPending
+            val toastRes = when {
+                !saved -> R.string.share_saved_failed_toast
+                hasDb  -> R.string.share_saved_toast
+                else   -> R.string.share_saved_pending_toast
+            }
+            withContext(Dispatchers.Main) {
+                Toast.makeText(appContext, toastRes, Toast.LENGTH_SHORT).show()
+            }
+        }
 
         finish()
     }
