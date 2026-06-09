@@ -18,6 +18,11 @@ import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -422,22 +427,35 @@ class SharedPostBodyFetcher(
         // resolve to the same prominent place. We only request `places.id` (the
         // Essentials SKU); the name comes from the model and the exact place from a
         // query_place_id deep link, so we never pay the Pro tier.
-        val resolved = mutableListOf<ResolvedPlace>()
+        //
+        // Dedupe first (order-preserving, first name wins — a synchronous, cheap
+        // pass), THEN fire the per-place Places lookups concurrently. Resolving up
+        // to MAX_PLACES one-at-a-time spent ~5-8s of pure round-trip latency on a
+        // long listicle; a bounded fan-out collapses that to a few waves while
+        // staying under Google's rate limits and OkHttp's per-host cap.
         val seenNames = HashSet<String>()
-        for (pq in candidates) {
-            val name  = pq.name.ifBlank { pq.query }
-            if (!seenNames.add(name.trim().lowercase())) continue   // exact repeat name
-            val query = pq.query.ifBlank { pq.name }
-            val placeId = runCatching { placesLookupId(query, key) }
-                .onFailure { Log.w(TAG, "places lookup failed for '$query': ${redactKey(it.message)}") }
-                .getOrNull() ?: continue                            // no Places match → skip
-            resolved.add(
-                ResolvedPlace(
-                    name    = name,
-                    area    = localityOf(name, query),
-                    mapsUri = googleMapsPlaceUri(name, placeId),
-                ),
-            )
+        val unique = candidates.mapNotNull { pq ->
+            val name = pq.name.ifBlank { pq.query }
+            if (!seenNames.add(name.trim().lowercase())) null       // exact repeat name
+            else name to pq.query.ifBlank { pq.name }
+        }
+
+        val gate = Semaphore(PLACES_CONCURRENCY)
+        val resolved = coroutineScope {
+            unique.map { (name, query) ->
+                async {
+                    val placeId = gate.withPermit {
+                        runCatching { placesLookupId(query, key) }
+                            .onFailure { Log.w(TAG, "places lookup failed for '$query': ${redactKey(it.message)}") }
+                            .getOrNull()
+                    } ?: return@async null                          // no Places match → skip
+                    ResolvedPlace(
+                        name    = name,
+                        area    = localityOf(name, query),
+                        mapsUri = googleMapsPlaceUri(name, placeId),
+                    )
+                }
+            }.awaitAll().filterNotNull()                            // awaitAll preserves model order
         }
         Log.i(TAG, "resolveLocations candidates=${candidates.size} resolved=${resolved.size}")
         return resolved
@@ -507,6 +525,11 @@ class SharedPostBodyFetcher(
         // "best 15 spots" listicle in full; still a backstop against a runaway
         // response. Each resolved place is one Places call.
         private const val MAX_PLACES            = 20
+        // Bound on in-flight Places lookups when resolving a post's destinations.
+        // Sits at OkHttp's default per-host request ceiling (5) — higher wouldn't
+        // add real parallelism (the rest just queue) and only risks tripping
+        // Google's QPS limit on a burst.
+        private const val PLACES_CONCURRENCY    = 5
         // Captions shorter than this are treated as image-primary posts: the
         // venue name is likely on the storefront in the photo, so OCR the image
         // even if the text yielded a (probably generic) place.

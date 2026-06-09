@@ -139,7 +139,6 @@
     <string name="cd_resolve_location">在地圖上尋找位置</string>
     <string name="cd_remove_place">移除地點</string>
     <string name="saved_post_resolving">正在解析新貼文…</string>
-    <string name="location_none_toast">這篇貼文找不到位置</string>
     <string name="saved_search_placeholder">搜尋內容、作者、來源</string>
 
     <!-- v4 Settings -->
