@@ -13,11 +13,14 @@ import io.ktor.client.request.get
 import io.ktor.client.request.headers
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
+import io.ktor.client.statement.bodyAsChannel
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
+import io.ktor.http.contentLength
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
+import io.ktor.utils.io.readRemaining
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -34,6 +37,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
+import kotlinx.io.readByteArray
 
 /**
  * Backfills the real post body (and a thumbnail image URL) when the share
@@ -322,7 +326,18 @@ class SharedPostBodyFetcher(
         val mime = response.contentType()
             ?.let { "${it.contentType}/${it.contentSubtype}" }
             ?: "image/jpeg"
-        return response.body<ByteArray>() to mime
+        // Bound the read so a hostile or just-oversized og:image can't OOM us — we
+        // load the whole thing into memory and then base64 a ~1.33x copy for the
+        // Gemini call. Reject early on an advertised over-cap size, then cap the
+        // actual bytes read so a missing or lying Content-Length can't slip past.
+        response.contentLength()?.let {
+            if (it > MAX_IMAGE_BYTES) error("image too large: $it bytes (cap $MAX_IMAGE_BYTES)")
+        }
+        val bytes = response.bodyAsChannel()
+            .readRemaining((MAX_IMAGE_BYTES + 1).toLong())
+            .readByteArray()
+        if (bytes.size > MAX_IMAGE_BYTES) error("image exceeds cap of $MAX_IMAGE_BYTES bytes")
+        return bytes to mime
     }
 
     private fun buildImageAnalysisBody(
@@ -521,6 +536,11 @@ class SharedPostBodyFetcher(
     companion object {
         private const val TAG = "BodyFetcher"
         private const val MAX_BODY_CHARS        = 4000
+        // Hard cap on a downloaded og:image before it's base64'd into the Gemini
+        // vision request. 10 MB clears any real social thumbnail with room to
+        // spare while bounding the in-memory blob (+ its ~1.33x base64 copy);
+        // anything larger is rejected rather than risking an OOM.
+        private const val MAX_IMAGE_BYTES       = 10 * 1024 * 1024
         // Upper bound on destinations resolved per post — high enough to cover a
         // "best 15 spots" listicle in full; still a backstop against a runaway
         // response. Each resolved place is one Places call.
