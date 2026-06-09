@@ -13,6 +13,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
+import com.luna.morningagent.LocaleHelper
 import com.luna.morningagent.MainActivity
 import com.luna.morningagent.R
 import com.luna.morningagent.data.AgentRepository
@@ -63,7 +64,11 @@ class MorningAgentWorker(
 
         val result = try {
             val briefing = repo.runAgent()
-            postBriefingNotification(applicationContext, briefing)
+            // Resolve notification strings against the in-app language, not the
+            // system locale: applicationContext keeps the app's base config, so a
+            // background worker's getString() ignores the user's per-app choice.
+            val localized = LocaleHelper.applyLocale(applicationContext, store.getAppLanguage())
+            postBriefingNotification(localized, briefing)
             Result.success()
         } catch (_: Exception) {
             // Cap retries via WorkManager runAttemptCount — gives us up to 3

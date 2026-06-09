@@ -3,6 +3,7 @@ package com.luna.morningagent.data.agent
 import ai.koog.prompt.dsl.Prompt
 import ai.koog.prompt.dsl.prompt
 import ai.koog.prompt.params.LLMParams
+import com.luna.morningagent.data.model.BriefingKind
 import com.luna.morningagent.data.model.Priority
 import com.luna.morningagent.data.model.ProposedAction
 import com.luna.morningagent.data.model.Task
@@ -21,8 +22,38 @@ internal const val BRIEFING_TEMPERATURE = 0.6
 // 4 attempts total: try, wait 1s, try, wait 3s, try, wait 7s, try.
 internal val BRIEFING_RETRY_BACKOFFS_MS = longArrayOf(1_000L, 3_000L, 7_000L)
 
-internal const val BRIEFING_FALLBACK_SUMMARY =
-    "Here's today's plan. Start with the first task — it sets up the rest."
+// Natural-language output (summary, tips, reasons) is written in the user's app
+// language; structural fields — JSON keys, task ids, enum values, ISO dates —
+// always stay verbatim. The agent defaults to English without an explicit
+// directive, so every prompt carries one resolved from the stored BCP-47 code.
+internal fun briefingLanguageName(code: String): String = when (code) {
+    "zh-TW" -> "Traditional Chinese (繁體中文)"
+    else    -> "English"
+}
+
+internal fun outputLanguageDirective(code: String): String =
+    "Write all natural-language text — the summary, every tip, and every action " +
+    "reason — in ${briefingLanguageName(code)}. Keep the JSON keys, task ids, the " +
+    "\"type\" and \"newPriority\" enum values, and all dates exactly as given; do " +
+    "not translate or localize them."
+
+// Used when the model returns a blank summary. Localized to match the directive.
+internal fun briefingFallbackSummary(code: String): String = when (code) {
+    "zh-TW" -> "這是今天的計畫。先從第一項任務開始——它會帶起後面的節奏。"
+    else    -> "Here's today's plan. Start with the first task — it sets up the rest."
+}
+
+// Used when there are no tasks at all (the model is skipped entirely).
+internal fun emptyTasksSummary(kind: BriefingKind, code: String): String = when (kind) {
+    BriefingKind.MORNING -> when (code) {
+        "zh-TW" -> "今天沒有高優先任務，把早晨留給自己。"
+        else    -> "No high-priority tasks today. Take the morning back."
+    }
+    BriefingKind.EVENING -> when (code) {
+        "zh-TW" -> "沒有要收尾的事了，明天已就緒。"
+        else    -> "Nothing left to tidy. Tomorrow is set."
+    }
+}
 
 internal const val BRIEFING_SYSTEM_PROMPT =
     "You are a calm, precise morning briefing assistant for a software engineer named Luna. " +
@@ -77,15 +108,15 @@ private fun ProposedActionPayload.toProposedActionOrNull(): ProposedAction? {
     }
 }
 
-internal fun buildBriefingPrompt(tasks: List<Task>): Prompt = prompt(
+internal fun buildBriefingPrompt(tasks: List<Task>, language: String): Prompt = prompt(
     id     = "morning-briefing",
     params = LLMParams(temperature = BRIEFING_TEMPERATURE),
 ) {
     system(BRIEFING_SYSTEM_PROMPT)
-    user(buildBriefingUserMessage(tasks))
+    user(buildBriefingUserMessage(tasks, language))
 }
 
-internal fun buildBriefingUserMessage(tasks: List<Task>): String = buildString {
+internal fun buildBriefingUserMessage(tasks: List<Task>, language: String): String = buildString {
     val today = LocalDate.now(ZoneId.systemDefault())
     appendLine("Today is $today. Today's tasks (overdue or due today, grouped by priority):")
     appendLine()
@@ -126,6 +157,8 @@ internal fun buildBriefingUserMessage(tasks: List<Task>): String = buildString {
     appendLine("Return ONLY a JSON object, no markdown fences, matching this shape:")
     appendLine("""{"summary": "...", "tips": {"<id>": "..."}, "proposedActions": [{"type": "mark_done", "taskId": "<id>", "reason": "..."}]}""")
     appendLine("Every task id above must appear as a key in \"tips\". \"proposedActions\" may be absent or have at most 2 entries.")
+    appendLine()
+    appendLine(outputLanguageDirective(language))
 }
 
 internal fun parseBriefingResponse(raw: String): BriefingPayload {

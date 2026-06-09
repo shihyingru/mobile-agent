@@ -33,12 +33,13 @@ class GeminiBriefingClient(
         // effect on the next Run Now without restarting the app.
         val option = GeminiModelOption.fromId(tokenStore.getGeminiModel())
 
+        // The agent writes its prose in the user's app language (it defaults to
+        // English otherwise); resolved per call so a language change applies next run.
+        val language = tokenStore.getAppLanguage()
+
         if (tasks.isEmpty()) {
             return BriefingDraft(
-                summary         = when (kind) {
-                    BriefingKind.MORNING -> "No high-priority tasks today. Take the morning back."
-                    BriefingKind.EVENING -> "Nothing left to tidy. Tomorrow is set."
-                },
+                summary         = emptyTasksSummary(kind, language),
                 tipsByTaskId    = emptyMap(),
                 proposedActions = emptyList(),
                 model           = option.id,
@@ -47,8 +48,8 @@ class GeminiBriefingClient(
         }
 
         val builtPrompt = when (kind) {
-            BriefingKind.MORNING -> buildBriefingPrompt(tasks)
-            BriefingKind.EVENING -> buildReflectionPrompt(tasks, morningContext)
+            BriefingKind.MORNING -> buildBriefingPrompt(tasks, language)
+            BriefingKind.EVENING -> buildReflectionPrompt(tasks, morningContext, language)
         }
         val executor = simpleGoogleAIExecutor(apiKey)
         val responses = runBriefingWithRetry(onAttempt) {
@@ -60,7 +61,7 @@ class GeminiBriefingClient(
         val parsed = parseBriefingResponse(assistant.content)
 
         return BriefingDraft(
-            summary         = parsed.summary.ifBlank { BRIEFING_FALLBACK_SUMMARY },
+            summary         = parsed.summary.ifBlank { briefingFallbackSummary(language) },
             tipsByTaskId    = parsed.tips,
             proposedActions = parsed.proposedActions.toProposedActions(),
             model           = option.id,
