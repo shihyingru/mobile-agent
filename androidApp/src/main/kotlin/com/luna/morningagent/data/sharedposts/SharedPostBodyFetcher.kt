@@ -514,9 +514,11 @@ class SharedPostBodyFetcher(
     private fun List<String>.dedupe(): List<String> =
         map { it.trim() }.filter { it.isNotBlank() }.distinct()
 
-    /** Strip a `key=<token>` query param out of an error message before logging —
-     *  Ktor embeds the full request URL (including the Gemini API key) in timeout
-     *  / failure exception messages. */
+    /** Defense-in-depth scrub of any `key=<token>` left in an error message before
+     *  logging. The API key now travels in the `x-goog-api-key` header, not the
+     *  URL, so Ktor's timeout / failure messages (which echo the request URL) no
+     *  longer carry it — this stays as a backstop against a stray key= slipping in
+     *  from elsewhere. */
     private fun redactKey(message: String?): String =
         message.orEmpty().replace(Regex("key=[A-Za-z0-9_-]+"), "key=***")
 
