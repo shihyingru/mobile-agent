@@ -160,9 +160,10 @@ class SharedPostBodyFetcher(
     private suspend fun aiExtract(url: String): String? {
         val token = tokenStore.getGeminiKey() ?: return null
         val response: JsonObject = httpClient.post(
-            "$GEMINI_API_BASE/models/$AI_FALLBACK_MODEL:generateContent?key=$token",
+            "$GEMINI_API_BASE/models/$AI_FALLBACK_MODEL:generateContent",
         ) {
             contentType(ContentType.Application.Json)
+            headers { append(GEMINI_KEY_HEADER, token) }
             setBody(buildAiExtractBody(url))
         }.body()
         if (response["error"] != null) return null
@@ -224,9 +225,10 @@ class SharedPostBodyFetcher(
             val (bytes, mime) = downloadImage(imageUrl)
             Log.i(TAG, "analyzeImage img bytes=${bytes.size} mime=$mime")
             val response: JsonObject = httpClient.post(
-                "$GEMINI_API_BASE/models/$VISION_MODEL:generateContent?key=$token",
+                "$GEMINI_API_BASE/models/$VISION_MODEL:generateContent",
             ) {
                 contentType(ContentType.Application.Json)
+                headers { append(GEMINI_KEY_HEADER, token) }
                 setBody(buildImageAnalysisBody(body, bytes, mime))
             }.body()
             response["error"]?.let { Log.w(TAG, "analyzeImage gemini error: $it"); return@runCatching null }
@@ -275,9 +277,10 @@ class SharedPostBodyFetcher(
         if (token == null) { Log.w(TAG, "analyzeText: no Gemini key"); return null }
         return runCatching {
             val response: JsonObject = httpClient.post(
-                "$GEMINI_API_BASE/models/$VISION_MODEL:generateContent?key=$token",
+                "$GEMINI_API_BASE/models/$VISION_MODEL:generateContent",
             ) {
                 contentType(ContentType.Application.Json)
+                headers { append(GEMINI_KEY_HEADER, token) }
                 setBody(buildTextSignalsBody(content))
             }.body()
             response["error"]?.let { Log.w(TAG, "analyzeText gemini error: $it"); return@runCatching null }
@@ -511,9 +514,11 @@ class SharedPostBodyFetcher(
     private fun List<String>.dedupe(): List<String> =
         map { it.trim() }.filter { it.isNotBlank() }.distinct()
 
-    /** Strip a `key=<token>` query param out of an error message before logging —
-     *  Ktor embeds the full request URL (including the Gemini API key) in timeout
-     *  / failure exception messages. */
+    /** Defense-in-depth scrub of any `key=<token>` left in an error message before
+     *  logging. The API key now travels in the `x-goog-api-key` header, not the
+     *  URL, so Ktor's timeout / failure messages (which echo the request URL) no
+     *  longer carry it — this stays as a backstop against a stray key= slipping in
+     *  from elsewhere. */
     private fun redactKey(message: String?): String =
         message.orEmpty().replace(Regex("key=[A-Za-z0-9_-]+"), "key=***")
 
@@ -563,6 +568,10 @@ class SharedPostBodyFetcher(
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
                 "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
         private const val GEMINI_API_BASE       = "https://generativelanguage.googleapis.com/v1beta"
+        // Pass the API key in this header rather than a `?key=` query param so it
+        // never lands in URL-level logs / crash traces / proxy access logs. The
+        // Generative Language API accepts it identically to the query form.
+        private const val GEMINI_KEY_HEADER     = "x-goog-api-key"
         private const val AI_FALLBACK_MODEL     = "gemini-2.5-flash"
         private const val VISION_MODEL          = "gemini-2.5-flash"
 
