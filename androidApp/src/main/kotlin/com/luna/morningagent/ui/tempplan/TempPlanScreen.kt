@@ -46,7 +46,11 @@ fun TempPlanScreen(
     val morning = MaterialTheme.morning
 
     val defaultName = stringResource(R.string.temp_plan_untitled)
-    LaunchedEffect(vm.uiState) {
+    // Auto-create on entry only — keyed on Unit so it fires once per screen entry
+    // (and again on re-entry, since the composable leaves composition). Must NOT
+    // key on vm.uiState: deletePlan() flips uiState to Empty, and an Empty-keyed
+    // effect would immediately recreate a default plan, so the delete never sticks.
+    LaunchedEffect(Unit) {
         if (vm.uiState is TempPlanUiState.Empty) {
             vm.createDefaultPlan(defaultName)
         }
