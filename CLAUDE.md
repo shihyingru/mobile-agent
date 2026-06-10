@@ -10,6 +10,13 @@ Morning Agent — Luna's personal Android app. Wakes at 9:00 AM, fetches high-pr
 
 Gitflow. **PRs target `develop`, never `main`.** `main` is release-only — it advances by merging `develop` → `main` when cutting a release. Feature branches (`feature/...`, `fix/...`, `docs/...`) branch off `develop` and PR back into `develop`. Stacked PRs are fine: base the second on the first's branch and retarget to `develop` after the first merges.
 
+## Commands
+
+- Build: `./gradlew :androidApp:assembleDebug`
+- Modules: `:androidApp` (Compose UI + agent), `:shared` (KMP, android-only target)
+- No lint/format tooling (no ktlint/detekt) — match existing style by hand.
+- Tests: none yet (Phase 1 visual-only). Add `:androidApp:testDebugUnitTest` here when agent-slice tests land.
+
 # 12-rule
 
 These rules apply to every task in this project unless explicitly overridden.
