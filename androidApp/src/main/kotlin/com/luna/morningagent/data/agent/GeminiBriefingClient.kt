@@ -20,6 +20,8 @@ class GeminiBriefingClient(
     private val tokenStore: TokenStore,
 ) : BriefingGenerator {
 
+    override val providerLabel = "Gemini"
+
     override suspend fun generate(
         tasks: List<Task>,
         kind: BriefingKind,

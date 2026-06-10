@@ -10,6 +10,12 @@ import com.luna.morningagent.data.model.Task
 // Koog-backed). Kept narrow so the agent layer can be swapped without touching
 // the repository or the UI.
 interface BriefingGenerator {
+    // Human-readable provider name ("Gemini", "Claude") for error attribution.
+    // AgentRepository can't name the provider on its own — the generator is the
+    // only thing that knows which backend a failed call actually hit, so a
+    // wrapped network error reads "Couldn't reach Claude" and not the wrong one.
+    val providerLabel: String
+
     // `kind` picks the prompt: MORNING runs the focus-the-day prompt, EVENING
     // runs the wrap-up / carry-over prompt. `morningContext` is consulted only
     // for EVENING — the evening prompt diffs this morning's task list against
