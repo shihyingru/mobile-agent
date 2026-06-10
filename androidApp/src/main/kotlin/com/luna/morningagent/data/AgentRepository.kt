@@ -1,6 +1,7 @@
 package com.luna.morningagent.data
 
 import com.luna.morningagent.data.agent.BriefingGenerator
+import com.luna.morningagent.data.agent.ClaudeKeyMissingException
 import com.luna.morningagent.data.agent.GeminiKeyMissingException
 import com.luna.morningagent.data.model.Briefing
 import com.luna.morningagent.data.model.BriefingKind
@@ -47,8 +48,11 @@ class AgentRepository(
             briefingGenerator.generate(tasks, kind, morningContext, onAttempt)
         } catch (e: GeminiKeyMissingException) {
             throw AgentConfigMissingException(e.message ?: "Gemini not configured", e)
+        } catch (e: ClaudeKeyMissingException) {
+            throw AgentConfigMissingException(e.message ?: "Claude not configured", e)
         } catch (e: Exception) {
-            throw AgentNetworkException("Couldn't reach Gemini. ${e.message ?: ""}".trim(), e)
+            val provider = briefingGenerator.providerLabel
+            throw AgentNetworkException("Couldn't reach $provider. ${e.message ?: ""}".trim(), e)
         }
 
         val tasksWithTips = tasks.map { t ->

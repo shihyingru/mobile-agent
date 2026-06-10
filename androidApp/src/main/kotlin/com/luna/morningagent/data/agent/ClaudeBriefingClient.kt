@@ -18,6 +18,8 @@ class ClaudeBriefingClient(
     private val tokenStore: TokenStore,
 ) : BriefingGenerator {
 
+    override val providerLabel = "Claude"
+
     override suspend fun generate(
         tasks: List<Task>,
         kind: BriefingKind,
